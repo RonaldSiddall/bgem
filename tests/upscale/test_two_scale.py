@@ -618,38 +618,34 @@ def test_two_scale():
     steps = (9, 10, 11)
     #steps = (50, 60, 70)
     #steps = (3, 4, 5)
-    grid = fem.Grid(domain_size, steps, fem.Fe.Q(dim=3), origin=-domain_size / 2)
+    fem_grid = fem.fem_grid(domain_size, steps, fem.Fe.Q(dim=3), origin=-domain_size / 2)
     bc_pressure_gradient = [1, 0, 0]
-    grid_cond = homo_decovalex(fr_media, grid)
+    grid_cond = homo_decovalex(fr_media, fem_grid.grid)
     #grid_cond = np.ones(grid.n_elements)[:, None] * np.array([1, 1, 1, 0, 0, 0])[None, :]
-    pressure = grid.solve_sparse(grid_cond, np.array(bc_pressure_gradient)[None, :])
+    pressure = fem_grid.solve_sparse(grid_cond, np.array(bc_pressure_gradient)[None, :])
     assert not np.any(np.isnan(pressure))
 
-    flow_out = reference_solution(fr_media, grid.dimensions, bc_pressure_gradient)
+    flow_out = reference_solution(fr_media, fem_grid.grid.dimensions, bc_pressure_gradient)
     project_fn = project_adaptive_source_quad
     #project_fn = project_ref_solution
     #ref_velocity_grid = grid.cell_field_F_like(project_fn(flow_out, grid).reshape((-1, 3)))
-    ref_velocity_grid = project_fn(flow_out, grid).reshape((-1, 3))
+    ref_velocity_grid = project_fn(flow_out, fem_grid.grid).reshape((-1, 3))
 
-    grad_pressure = grid.field_grad(pressure)   # (n_vectors, n_els, dim)
+    grad_pressure = fem_grid.field_grad(pressure)   # (n_vectors, n_els, dim)
     grad_pressure = grad_pressure[0, :, :][:, :, None]  # (n_els, dim, 1)
     velocity = -voigt_to_tn(grid_cond) @ grad_pressure    # (n_els, dim, 1)
     #velocity = grad_pressure    # (n_els, dim, 1)
     velocity = velocity[:, :, 0] # transpose
-    velocity_zyx = grid.cell_field_F_like(velocity)  #.reshape(*grid.n_steps, -1).transpose(2,1,0,3).reshape((-1, 3))
+    velocity_zyx = fem_grid.grid.cell_field_F_like(velocity)  #.reshape(*grid.n_steps, -1).transpose(2,1,0,3).reshape((-1, 3))
     # Comparison
     # origin = [0, 0, 0]
 
     #pv_grid = pv.StructuredGrid()
-    xyz_range = [ np.linspace(grid.origin[ax], grid.origin[ax] + grid.dimensions[ax], grid.shape[ax] + 1, dtype=np.float32)
-                  for ax in [0, 1, 2]
-                ]
-
-    x, y, z = np.meshgrid(*xyz_range, indexing='ij')
+    x, y, z = np.meshgrid(*fem_grid.grid.axes_linspace(), indexing='ij')
     pv_grid = pv.StructuredGrid(x, y, z)
     #points = grid.nodes()
     pv_grid_centers = pv_grid.cell_centers().points
-    print(grid.barycenters())
+    print(fem_grid.grid.barycenters())
     print(pv_grid_centers)
 
     #pv_grid.dimensions = grid.n_steps + 1
@@ -657,7 +653,7 @@ def test_two_scale():
     pv_grid.cell_data['ref_velocity'] = ref_velocity_grid
     pv_grid.cell_data['homo_velocity'] = velocity_zyx
     pv_grid.cell_data['diff'] = velocity_zyx - ref_velocity_grid
-    pv_grid.cell_data['homo_cond'] = grid.cell_field_F_like(grid_cond)
+    pv_grid.cell_data['homo_cond'] = fem_grid.grid.cell_field_F_like(grid_cond)
     pv_grid.point_data['homo_pressure'] = pressure[0]
 
     pv_grid.save(str(workdir / "test_result.vtk"))
