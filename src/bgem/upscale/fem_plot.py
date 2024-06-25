@@ -1,60 +1,78 @@
 import pyvista as pv
 import numpy as np
-
-from bgem.upscale import FEM
+import pathlib
+from bgem.upscale import Grid
 import matplotlib.pyplot as plt
 import numpy as np
 
+"""
+Custom plotting function, mainly for debugging and test purpose.
+- VTK output of cell and vector fields on a structured grid
+- PyVista plot of a given cell / point field
+- 3d Scatter glyph visualization of a vector/tensor field 
+"""
 
-def plot_pressure_fields(grid:FEM, pressure):
+
+
+def grid_fields_vtk(grid:Grid,
+                cell_fields = None,
+                point_fields = None,
+                vtk_path: pathlib.Path=None):
     """
-    x_grid: shape (M,)
-    y_grid: shape (N,)
-    Plots K scalar fields stored in a (K, M, N) shaped array `pressure`.
-
-    Parameters:
-    pressure (numpy.ndarray): An array of shape (K, M, N) representing K scalar fields.
+    Output given cell and point fields to VTK.
+    Return: the pv grid object with the cell and point data arrays
     """
-    x_grid, y_grid = [np.linspace(0, grid.grid.dimensions[i], grid.dofs_shape[i]) for i in range(2)]
-    K, n_dofs = pressure.shape
-    assert n_dofs == grid.n_dofs
-    M, N = grid.grid.shape + 1
-    pressure = pressure.reshape(K, M, N)
+    x, y, z = np.meshgrid(*grid.axes_linspace(), indexing='ij')
+    pv_grid = pv.StructuredGrid(x, y, z)
+    if cell_fields is not None:
+        for k, v in cell_fields.items():
+            if pv_grid.GetNumberOfCells() != v.shape[0]:
+                raise ValueError(f"Cell field size {v.shape[0]} mismatch number of cells {pv_grid.GetNumberOfCells()}")
+            pv_grid.cell_data[k] = v
+    if point_fields is not None:
+        for k, v in point_fields.items():
+            if pv_grid.GetNumberOfPoints() != v.shape[0]:
+                raise ValueError(f"Point field size {v.shape[0]} mismatch number of points {pv_grid.GetNumberOfPoints()}")
+            pv_grid.point_data[k] = v
+    if vtk_path is not None:
+        pv_grid.save(str(vtk_path))
+    return pv_grid
 
-    # Create a figure and K subplots in a single row
-    fig, axes = plt.subplots(1, K, figsize=(K * 5, 5), sharey=True)
+def create_plotter(**options):
+    #pv.start_xvfb()
+    font_size = 20
+    #pv.global_theme.font.size = font_size
+    plotter = pv.Plotter(**options)
+    # Add axes and bounding box for context
+    plotter.add_axes()
+    plotter.show_grid()
+    plotter.add_bounding_box()
+    return plotter
+#
+# def pv_plot_mesh(pv_grid, color='grey', opacity=1.0, plotter = None):
+#     """
+#     Usage:
+#     plotter = pv_plot_mesh(mesh_one)
+#     plotter = pv_plot_mesh(mesh_two, plotter=plotter)
+#     plotter.show()
+#     """
+#     if plotter is None:
+#         pv.start_xvfb()
+#         font_size = 20
+#         pv.global_theme.font.size = font_size
+#         plotter = pv.Plotter(off_screen=True, window_size=(1024, 768))
+#         # Add axes and bounding box for context
+#         plotter.add_axes()
+#         plotter.show_grid()
+#         plotter.add_bounding_box()
+#
+#     #plotter.set_font(font_size=font_size)
+#     plotter.add_mesh(pv_grid, color=color, opacity=opacity)
+#
+#     return plotter
 
-    # Setting the limits for all plots
-    #x_limit = (0, M)
-    #y_limit = (0, N)
 
-    # Find the global min and max values for a common color scale
-    vmin, vmax = pressure.min(), pressure.max()
-    X, Y = np.meshgrid(x_grid, y_grid)
-    for i in range(K):
-        # Plot each scalar field
-        im = axes[i].pcolormesh(X, Y, pressure[i].transpose(), vmin=vmin, vmax=vmax, shading='gouraud')
-
-    #im = axes[i].imgshow(pressure[i, :, :], vmin=vmin, vmax=vmax,
-        #                    origin='lower', extent=x_limit + y_limit)
-
-        # Set title for each subplot
-        axes[i].set_title(f"Field {i + 1}")
-
-        # Set limits for x and y axis
-        #axes[i].set_xlim(x_limit)
-        #axes[i].set_ylim(y_limit)
-
-    # Add a common color bar
-    fig.colorbar(im, ax=axes.ravel().tolist(), shrink=0.8)
-    # Show the plot
-    #plt.tight_layout()
-    plt.show()
-
-
-
-
-def plot_grid(n=5):
+def plot_grid(n):
     """
     Create
     :param n:
@@ -65,6 +83,18 @@ def plot_grid(n=5):
     mesh = pv.StructuredGrid(*points[::-1])
     points = points.reshape((3, -1))
     return points, mesh
+
+def pv_plotter(meshes):
+    # Create a plotting object
+    p = pv.Plotter()
+
+    # Add axes and bounding box for context
+    p.add_axes()
+    p.show_grid()
+    p.add_bounding_box()
+
+    # Show the plot
+    p.show()
 
 
 def scatter_3d(mesh, values, n=5):
@@ -77,19 +107,10 @@ def scatter_3d(mesh, values, n=5):
     geom = pv.Sphere(phi_resolution=8, theta_resolution=8)
     glyphs = mesh.glyph(geom=geom, scale='scalars', factor=0.3)
 
-    # Create a plotting object
-    p = pv.Plotter()
 
     # Add the glyphs to the plotter
     p.add_mesh(glyphs, cmap='coolwarm', show_scalar_bar=True)
 
-    # Add axes and bounding box for context
-    p.add_axes()
-    p.show_grid()
-    p.add_bounding_box()
-
-    # Show the plot
-    p.show()
 
 
 def plot_fn_3d(fn, n=5):

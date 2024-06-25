@@ -38,7 +38,7 @@ from bgem import stochastic
 from bgem.gmsh import gmsh, options
 from mesh_class import Mesh
 from bgem.core import call_flow, dotdict, workdir as workdir_mng
-from bgem.upscale import fem, voigt_to_tn, tn_to_voigt, FracturedMedia, voxelize
+from bgem.upscale import fem_plot, fem, voigt_to_tn, tn_to_voigt, FracturedMedia, voxelize
 import decovalex_dfnmap as dmap
 from scipy.interpolate import LinearNDInterpolator
 
@@ -648,13 +648,21 @@ def test_two_scale():
     print(fem_grid.grid.barycenters())
     print(pv_grid_centers)
 
+    cell_fields = dict(
+        ref_velocity = ref_velocity_grid,
+        homo_velocity = velocity_zyx,
+        diff = velocity_zyx - ref_velocity_grid,
+        homo_cond = fem_grid.grid.cell_field_F_like(grid_cond),
+    )
+    point_fields = dict(
+        homo_pressure=pressure[0]
+    )
+    pv_grid = fem_plot.grid_fields_vtk(fem_grid.grid, cell_fields, vtk_path=workdir/'test_result.vtk')
+    plotter = fem_plot.create_plotter() #off_screen=True, window_size=(1024, 768))
+    plotter.add_mesh(pv_grid, scalars='ref_velocity')
+    plotter.show()
     #pv_grid.dimensions = grid.n_steps + 1
     #pv_grid.cell_data['ref_velocity'] = np.arange(22*20*18).reshape((18,20,22)).transpose((2, 1, 0)).reshape((-1,))
-    pv_grid.cell_data['ref_velocity'] = ref_velocity_grid
-    pv_grid.cell_data['homo_velocity'] = velocity_zyx
-    pv_grid.cell_data['diff'] = velocity_zyx - ref_velocity_grid
-    pv_grid.cell_data['homo_cond'] = fem_grid.grid.cell_field_F_like(grid_cond)
-    pv_grid.point_data['homo_pressure'] = pressure[0]
 
-    pv_grid.save(str(workdir / "test_result.vtk"))
+    #pv_grid.save(str(workdir / "test_result.vtk"))
 

@@ -1,4 +1,7 @@
 import numpy as np
+import logging
+
+
 def equivalent_scalar(loads, responses):
     assert loads.shape[1] == responses.shape[1] == 1
     return np.dot(loads[:, 0], responses[:, 0]) / np.dot(loads[:, 0], loads[:, 0])

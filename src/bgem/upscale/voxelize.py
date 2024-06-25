@@ -54,6 +54,12 @@ TODO:
 
 @attrs.define
 class FracturedMedia:
+    """
+    Representation of the fractured media sample.
+    1. DFN imply a box
+    2. If we add a grid step we can specify bulk values on that grid
+    3. voxelization grid could be independent. Make interpolation in each axis independently.
+    """
     dfn: FractureSet                #
     fr_cross_section: np.ndarray    # shape (n_fractures,)
     fr_conductivity: np.ndarray     # shape (n_fractures,)
