@@ -82,6 +82,18 @@ class ValueDescription:
     quantity: str
     unit: str
 
+def test_PowerLawSize():
+    #dfn.PowerLawSize.from_mean_area()
+    pass
+
+def test_UniformBoxPosition():
+    center = [-10, -20, -40]
+    dimensions = [20, 30, 40]
+    pos = dfn.UniformBoxPosition(dimensions, center)
+    assert pos.volume == 24000
+    unit_pos_sample =  (pos.sample(1000) - center) / dimensions
+    assert np.all(unit_pos_sample > -0.5)
+    assert np.all(unit_pos_sample < 0.5)
 
 def to_polar(x, y, z):
     rho = np.sqrt(x ** 2 + y ** 2)
@@ -131,8 +143,9 @@ def generate_uniform(statistics, n_frac_limit):
     #volume = np.product()
     pop = dfn.Population.from_cfg(statistics, fracture_box)
     #pop.initialize()
-    pop.set_range_from_size(sample_size=n_frac_limit)
-    print("total mean size: ", pop.mean_size())
+    pop = pop.set_range_from_size(sample_size=n_frac_limit)
+    mean_size = pop.mean_size()
+    print("total mean size: ", mean_size)
     pos_gen = dfn.UniformBoxPosition(fracture_box)
     fractures = pop.sample(pos_distr=pos_gen, keep_nonempty=True)
     # fracture.fr_intersect(fractures)
@@ -457,11 +470,12 @@ def make_mesh(geometry_dict, fractures: fr_set.Fracture, mesh_name: str):
 def test_brep_dfn():
     np.random.seed(123)
     fractures = generate_uniform(fracture_stats, n_frac_limit=50)
-    for i, f in enumerate(fractures):
-        f.id = i
-    make_brep(geometry_dict, fractures, sandbox_fname("test_dfn", "brep"))
+    #fractures = [f for f in fractures]
+    #for i, f in enumerate(fractures):
+    #    f.id = i
+    brep_file = fractures.make_fractures_brep(sandbox_fname("test_dfn", "brep"))
 
-    ipps = compute_intersections(fractures)
+    # ipps = compute_intersections(fractures)
     #resolve_fractures_intersection(ipss)
 
     print('brep_test_done')
@@ -475,58 +489,58 @@ def test_brep_dfn():
 #def resolve_fractures_intersection(ipss):
 
 
-def test_PowerLawSize():
-    powers = [0.8, 1.6, 2.9, 3, 3.2]
-    cmap = plt.get_cmap('gnuplot')
-    colors = [cmap(i) for i in np.linspace(0, 1, len(powers))]
-
-    fig = plt.figure(figsize = (16, 9))
-    axes = fig.subplots(1, 2, sharey=True)
-    for i, power in enumerate(powers):
-        diam_range = (0.1, 10)
-        distr = frac.PowerLawSize(power, diam_range, 1000)
-        sizes = distr.sample(volume=1, size=10000)
-        sizes.sort()
-        x = np.geomspace(*diam_range, 30)
-        y = [distr.cdf(xv, diam_range) for xv in x]
-        z = [distr.ppf(yv, diam_range) for yv in y]
-        np.allclose(x, z)
-        axes[0].set_xscale('log')
-        axes[0].plot(x, y, label=str(power), c=colors[i])
-
-        axes[0].plot(sizes[::100], np.linspace(0, 1, len(sizes))[::100], c=colors[i], marker='+')
-        sample_range = [0.1, 1]
-        x1 = np.geomspace(*sample_range, 200)
-        y1 = [distr.cdf(xv, sample_range) for xv in x1]
-        axes[1].set_xscale('log')
-        axes[1].plot(x1, y1, label=str(power))
-    fig.legend()
-    plt.show()
-
-# def make_brep(geometry_dict, fractures: fr_set.Fracture, brep_name: str):
-#     """
-#     Create the BREP file from a list of fractures using the brep writer interface.
-#     """
-#     #fracture_mesh_step = geometry_dict['fracture_mesh_step']
-#     #dimensions = geometry_dict["box_dimensions"]
+# def test_PowerLawSize():
+#     powers = [0.8, 1.6, 2.9, 3, 3.2]
+#     cmap = plt.get_cmap('gnuplot')
+#     colors = [cmap(i) for i in np.linspace(0, 1, len(powers))]
 #
-#     print("n fractures:", len(fractures))
+#     fig = plt.figure(figsize = (16, 9))
+#     axes = fig.subplots(1, 2, sharey=True)
+#     for i, power in enumerate(powers):
+#         diam_range = (0.1, 10)
+#         distr = frac.PowerLawSize(power, diam_range, 1000)
+#         sizes = distr.sample(volume=1, size=10000)
+#         sizes.sort()
+#         x = np.geomspace(*diam_range, 30)
+#         y = [distr.cdf(xv, diam_range) for xv in x]
+#         z = [distr.ppf(yv, diam_range) for yv in y]
+#         np.allclose(x, z)
+#         axes[0].set_xscale('log')
+#         axes[0].plot(x, y, label=str(power), c=colors[i])
 #
-#     faces = []
-#     for i, fr in enumerate(fractures):
-#         #ref_fr_points = np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 0.0], [-1.0, 1.0, 0.0]]) # polovina
-#         ref_fr_points = fr_set.RectangleShape()._points
-#         frac_points = fr.transform(ref_fr_points)
-#         vtxs = [bw.Vertex(p) for p in frac_points]
-#         vtxs.append(vtxs[0])
-#         edges = [bw.Edge(a, b) for a, b in zip(vtxs[:-1], vtxs[1:])]
-#         face = bw.Face(edges)
-#         faces.append(face)
-#
-#     comp = bw.Compound(faces)
-#     loc = Transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
-#     with open(brep_name, "w") as f:
-#         bw.write_model(f, comp, loc)
+#         axes[0].plot(sizes[::100], np.linspace(0, 1, len(sizes))[::100], c=colors[i], marker='+')
+#         sample_range = [0.1, 1]
+#         x1 = np.geomspace(*sample_range, 200)
+#         y1 = [distr.cdf(xv, sample_range) for xv in x1]
+#         axes[1].set_xscale('log')
+#         axes[1].plot(x1, y1, label=str(power))
+#     fig.legend()
+#     plt.show()
+
+def make_brep(geometry_dict, fractures: fr_set.Fracture, brep_name: str):
+    """
+    Create the BREP file from a list of fractures using the brep writer interface.
+    """
+    #fracture_mesh_step = geometry_dict['fracture_mesh_step']
+    #dimensions = geometry_dict["box_dimensions"]
+
+    print("n fractures:", len(fractures))
+
+    faces = []
+    for i, fr in enumerate(fractures):
+        #ref_fr_points = np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 0.0], [-1.0, 1.0, 0.0]]) # polovina
+        ref_fr_points = fr_set.RectangleShape()._points
+        frac_points = fr.transform(ref_fr_points)
+        vtxs = [bw.Vertex(p) for p in frac_points]
+        vtxs.append(vtxs[0])
+        edges = [bw.Edge(a, b) for a, b in zip(vtxs[:-1], vtxs[1:])]
+        face = bw.Face(edges)
+        faces.append(face)
+
+    comp = bw.Compound(faces)
+    loc = Transform([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
+    with open(brep_name, "w") as f:
+        bw.write_model(f, comp, loc)
 
 
 

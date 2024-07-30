@@ -214,6 +214,8 @@ class PowerLawSize:
     def from_mean_area(cls, power, diam_range, p32, p32_power=None):
         """
         Construct the distribution using the mean arrea (P32) instead of intensity.
+        :param power: power law exponent
+        :param dim_range: size range for which p32 mean area is given
         :param p32: mean area of the fractures in given `diam_range`.
         :param p32_power: if the mean area is given for different power parameter.
         :return: PowerLawSize instance.
@@ -256,7 +258,7 @@ class PowerLawSize:
         """
         Set the range for the fracture sampling.
         :param sample_range: (min, max), None to reset to the full range.
-        DEPRECATED Use extract_range
+        DEPRECATED Use extract_range for the functional API.
         """
         if sample_range is None:
             sample_range = self.diam_range
@@ -269,7 +271,7 @@ class PowerLawSize:
             self.intensity,
             sample_range = sample_range)
 
-    def range_for_intensity(self, intensity, i_bound=0):
+    def _range_for_intensity(self, intensity, i_bound=0):
         a, b = self.diam_range
         c, d = self.sample_range
         k = self.power
@@ -286,14 +288,14 @@ class PowerLawSize:
         Increase lower fracture size bound of the sample range in order to achieve target fracture intensity.
         DEPRECATED
         """
-        self.sample_range = self.range_for_intensity(intensity, i_bound=0)
+        self.sample_range = self._range_for_intensity(intensity, i_bound=0)
 
     def set_upper_bound_by_intensity(self, intensity):
         """
         Increase lower fracture size bound of the sample range in order to achieve target fracture intensity.
         DEPRECATED
         """
-        self.sample_range = self.range_for_intensity(intensity, i_bound=1)
+        self.sample_range = self._range_for_intensity(intensity, i_bound=1)
 
     def mean_size(self, volume=1.0):
         """
@@ -367,6 +369,7 @@ class PowerLawSize:
 class UniformBoxPosition:
     dimensions = attrs.field(type=List[float], converter=np.array)
     center= attrs.field(type=List[float], converter=np.array, default=np.zeros(3))
+    # TODO: default center should be dimensions / 2 !! see DIFF
 
     def sample(self, size=1):
         # size = 1
@@ -374,7 +377,7 @@ class UniformBoxPosition:
         # for i in range(3):
         #    pos[:, i] =  np.random.uniform(self.center[i] - self.dimensions[i]/2, self.center[i] + self.dimensions[i]/2, size)
         pos = np.empty(3, dtype=float)
-        return  np.random.random([size, 3]) * self.dimensions[None, :] + self.center[None, :]
+        return  (np.random.random([size, 3]) - 0.5) * self.dimensions[None, :] + self.center[None, :]
 
     @property
     def volume(self):
@@ -734,6 +737,10 @@ class Population:
         return sum(sizes)
 
     def set_range_from_size(self, sample_size):
+        """
+        :param sample_size:
+        :return: Population with new common fracture range.
+        """
         return self.set_sample_range(self.common_range_for_sample_size(sample_size))
 
     def set_sample_range(self, sample_range):
@@ -794,7 +801,7 @@ class Population:
         fn_fam_intensities = lambda range: [f.size.range_intensity(range) for f in self.families]
         def fn_update_ranges(intensities):
             rel_total_intensity = target_total_intenzity / sum(intensities)
-            return [f.size.range_for_intensity(intensity * rel_total_intensity, i_bound=free_bound)
+            return [f.size._range_for_intensity(intensity * rel_total_intensity, i_bound=free_bound)
                     for f, intensity in zip(self.families, intensities)]
 
         intensities = fn_fam_intensities(common_range)
