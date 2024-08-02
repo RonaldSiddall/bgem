@@ -77,31 +77,110 @@ def test_base_shapes(base_shape):
     area_estimate = N_in / N * aabb_area
     assert abs(area_estimate - 1.0) < 0.01
 
-def single_frac_transform_mat(fr: stochastic.Fracture):
-    dfn = stochastic.FractureSet.from_list([fr])
-    base_vectors = dfn.transform_mat @ np.eye(3)
-    assert base_vectors.shape == (1, 3, 3)
-    ref_base = fr.transform(np.eye(3))
-    assert np.allclose(dfn.center[0], fr.center)
-    ref_base -= fr.center
-    assert np.allclose(base_vectors[0], ref_base)
+def check_fractures_transform_mat(fr_list):
+    dfn = stochastic.FractureSet.from_list(fr_list)
+    dfn_base = dfn.transform_mat @ np.eye(3)
+    for i, fr in enumerate(fr_list):
+        base_vectors = dfn_base[i]
+        assert base_vectors.shape == (3, 3)
+        ref_base_1 = (fr.transform(np.eye(3)) - fr.center).T
+        assert np.allclose(dfn.center[i], fr.center)
+        assert np.allclose(base_vectors, ref_base_1)
+        fr_2 = dfn[i]
+        ref_base_2 = (fr_2.transform(np.eye(3)) - fr.center).T
+        assert np.allclose(dfn.center[i], fr_2.center)
+        assert np.allclose(base_vectors, ref_base_2)
+
+
+
+
+fracture_stats = dict(
+    NS={'concentration': 17.8,
+     'p_32': 0.094,
+     'plunge': 1,
+     'power': 2.5,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 292},
+    NE={'concentration': 14.3,
+     'p_32': 0.163,
+     'plunge': 2,
+     'power': 2.7,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 326},
+    NW={'concentration': 12.9,
+     'p_32': 0.098,
+     'plunge': 6,
+     'power': 3.1,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 60},
+    EW={'concentration': 14.0,
+     'p_32': 0.039,
+     'plunge': 2,
+     'power': 3.1,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 15},
+    HZ={'concentration': 15.2,
+     'p_32': 0.141,
+     'power': 2.38,
+     'r_max': 564,
+     'r_min': 0.038,
+     #'trend': 5
+     #'plunge': 86,
+     'strike': 95,
+     'dip': 4
+     })
 
 def test_transform_mat():
     """
     Apply transfrom for
     :return:
     """
-    shape_id = stochastic.EllipseShape.id
-    fr = lambda s, c, n: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))
+    #shape_id = stochastic.EllipseShape.id
+    shape_id = stochastic.RectangleShape.id
+    fr = lambda s, c, n: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n) / np.linalg.norm(n))
     fractures = [
         fr([2, 3], [1, 2, 3], [0, 0, 1]),
+        fr([2, 3], [1, 2, 3], [1, 1, 0.2]),
+        fr([2, 3], [1, 2, 3], [-1, -1, 0.2]),
         fr([2, 3], [1, 2, 3], [0, 0, -1]),
         fr([2, 3], [0, 0, 0], [0, 1, 0]),
         fr([2, 3], [0, 0, 0], [0, -1, 0]),
         fr([2, 3], [0, 0, 0], [1, 0, 0]),
         fr([2, 3], [0, 0, 0], [-1, 0, 0]),
-        fr([2, 3], [0, 0, 0], [1, 2, 3] / np.linalg.norm([1,2,3])),
+        fr([2, 3], [0, 0, 0], [1, 2, 3]),
+    ]
+    check_fractures_transform_mat(fractures)
+
+    fr = lambda s, c, n, ax: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n)/np.linalg.norm(n), np.array(ax)/np.linalg.norm(ax))
+    fractures = [
+        fr([2, 3], [1, 2, 3], [0, 0, 1], [1, 1]),
+        fr([2, 3], [1, 2, 3], [1, -0.5, -3], [1, 2]),
+
+        #fr([2, 3], [1, 2, 3], [0, 0, -1]),
+        #fr([2, 3], [0, 0, 0], [0, 1, 0]),
+        #fr([2, 3], [0, 0, 0], [0, -1, 0]),
+        #fr([2, 3], [0, 0, 0], [1, 0, 0]),
+        #fr([2, 3], [0, 0, 0], [-1, 0, 0]),
+        #fr([2, 3], [0, 0, 0], [1, 2, 3] / np.linalg.norm([1,2,3])),
         #stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))
     ]
-    for fr in fractures:
-        single_frac_transform_mat(fr)
+    check_fractures_transform_mat(fractures)
+
+    # generate fracture set
+    box_size = 100
+    fracture_box = 3 * [box_size]
+    #volume = np.product()
+    pop = stochastic.Population.from_cfg(fracture_stats, fracture_box)
+    #pop.initialize()
+    pop = pop.set_range_from_size(sample_size=30)
+    mean_size = pop.mean_size()
+    print("total mean size: ", mean_size)
+    pos_gen = stochastic.UniformBoxPosition(fracture_box)
+    fractures = pop.sample(pos_distr=pos_gen, keep_nonempty=True)
+    # fracture.fr_intersect(fractures)
+
+    # stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))

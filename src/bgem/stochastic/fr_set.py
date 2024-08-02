@@ -73,7 +73,7 @@ class BaseShape:
         could be provided.
         :return: D - half of the box size
         """
-        half_size = np.ones(2) * self.scale
+        half_size = np.ones(2) * self.R
         return np.stack([-half_size, half_size])
 
     @staticmethod
@@ -155,8 +155,9 @@ class EllipseShape(BaseShape):
 
     def __init__(self):
         self.n_sides = np.inf
-        self.scale = 1 / math.sqrt(math.pi)
-        # Radius of the reference disc.
+        self.R = 1 / math.sqrt(math.pi)
+        self.r = self.R
+        # Radius of the reference disc of unit area
         self._scale_sqr = 1 / math.pi
         # Faster identification of inside points.
 
@@ -192,9 +193,12 @@ class RectangleShape(BaseShape):
         - N: Number of sides of the regular polygon.
         """
         # Square with area of unit disc.
-        self.scale = 0.5
+        self.R = 1/math.sqrt(2)
+        # Radius of circumcircle for square of unit area.
+        # S = 4 * sin(45)* cos(45) * R^2 = 4 * 1/2 * 1/sqrt(2)^2 = 1
+        self.r = 0.5
+        # Radius of inscribed circle for square of unit area.
         self.n_sides = 4
-        # Length of half side.
 
     def is_point_inside(self, x, y):
         """
@@ -206,7 +210,7 @@ class RectangleShape(BaseShape):
         Returns:
         - True if the point is inside the polygon, False otherwise.
         """
-        return (abs(x) < self.scale) and (abs(y) < self.scale)
+        return (abs(x) < self.r) and (abs(y) < self.r)
 
     def are_points_inside(self, points):
         """
@@ -218,10 +222,18 @@ class RectangleShape(BaseShape):
         - A boolean NumPy array where each element indicates whether the respective
           point is inside the polygon.
         """
-        return np.max(np.abs(points), axis=1) < self.scale
+        return np.max(np.abs(points), axis=1) < self.r
 
     def gmsh_base_shape(self, gmsh_geom: 'GeometryOCC'):
         return gmsh_geom.rectangle()
+
+    def vertices(self, n_sides=8):
+        """
+        PolygonShape(4) provides square in diamond position.
+        We need edges parallel with axis to provide fast interior indicator.
+        :return: ndarray (n_sides, 3)
+        """
+        return self.r * np.array([[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]] )
 
 
 class PolygonShape(BaseShape):
@@ -239,9 +251,9 @@ class PolygonShape(BaseShape):
         self.n_sides = N
         self.theta_segment_half = math.pi / N       # half angle of each segment
         self.cos_theta = math.cos(self.theta_segment_half)
-        self.scale = 1 / math.sqrt(0.5 * N * math.sin(2 * self.theta_segment_half))
+        self.R = 1 / math.sqrt(0.5 * N * math.sin(2 * self.theta_segment_half))
         # Radius of circumcircle. For polygon of the unit area.
-        self.R_inscribed = self.cos_theta * self.scale
+        self.r = self.cos_theta * self.R
         # Radius of inscribed circle for R=1
 
     @property
@@ -268,7 +280,7 @@ class PolygonShape(BaseShape):
 
         # Check if the x coordinate of the reminder point is less than
         # the radius of the inscribed circle (for R=1)
-        return x_reminder <= self.R_inscribed
+        return x_reminder <= self.r
 
     def are_points_inside(self, points):
         """
@@ -284,7 +296,7 @@ class PolygonShape(BaseShape):
         theta = np.arctan2(points[:, 1], points[:, 0])
         theta_reminder = theta % self.theta_segment_half
         x_reminder = np.cos(theta_reminder) * r
-        return x_reminder <= self.R_inscribed
+        return x_reminder <= self.r
 
     def gmsh_base_shape(self, gmsh_geom: 'GeometryOCC'):
         """
@@ -292,7 +304,7 @@ class PolygonShape(BaseShape):
         :param gmsh_geom:
         :return:
         """
-        points = self.disc_approx(n_sides=self.n_sides, scale=self.scale)
+        points = self.disc_approx(n_sides=self.n_sides, scale=self.R)
         return gmsh_geom.make_polygon(points)
 
 
@@ -888,7 +900,9 @@ class FractureSet:
         S_o = self.shape_axis - S_p
         cos_th = N[:, 2:3]
         SS_xy = S_p + cos_th * S_o
-        pos_nx = np.logical_xor(N[:, 0] > 0, N[:, 2] < 0)
+        # ?? th is in (0, pi) -> sin(th) always positive
+        #pos_nx = np.logical_xor(N[:, 0] > 0, N[:, 2] < 0)
+        pos_nx = N[:, 0] > 0
         sin_th = norm_Nxy
         sin_th[pos_nx] = - sin_th[pos_nx]
         SS_z = np.linalg.norm(S_o, axis=1) * sin_th
@@ -901,7 +915,7 @@ class FractureSet:
         scaled_trans_x = SS * self.radius[:, 0:1]
         scaled_trans_y = np.cross(N, SS, axis=1) * self.radius[:, 1:2]
         trans_z = N
-        trans_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=1)
+        trans_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=2)
         return trans_mat
 
     @fn.cached_property
@@ -929,7 +943,7 @@ class FractureSet:
         region_map = {}
         for i, fr in enumerate(self):
             shape = base_shape.copy()
-            print("fr: ", i, "tag: ", shape.dim_tags)
+            #print("fr: ", i, "tag: ", shape.dim_tags)
             region_name = f"fam_{fr.family}_{i:03d}"
             shape = shape.scale([fr.rx, fr.ry, 1]) \
                 .rotate(axis=[0, 0, 1], angle=fr.shape_angle) \
@@ -953,13 +967,19 @@ class FractureSet:
 
         faces = []
         base_vertices = self.base_shape.vertices(8)
-        fractures_vertices = self.transform_mat[:, :, :] @ base_vertices.T[None, :, :]   # (n_fr, 3, 3) @ (1, 3, n_points)
-        fractures_vertices = fractures_vertices.transpose((0, 2, 1)) + self.center[:, None, :]
-        fractures_vertices = np.concatenate((fractures_vertices, fractures_vertices[:, 0:1, :]), axis=1)  # end points
+        # Legacy transform
+        #fr_vtxs = lambda fr : fr.transform(base_vertices) - fr.center
+        #fr_vtx_ref = np.array([fr_vtxs(fr) for fr in self])
+
+        fractures_vertices = self.transform_mat @ (base_vertices.T)[None, :, :]   # (n_fr, 3, 3) @ (1, 3, n_points) -> (n_fr, 3, n_points)
+        fractures_vertices = fractures_vertices.transpose((0, 2, 1))
+        fractures_vertices = fractures_vertices + self.center[:, None, :] # (n_fr, 3, n_points) -> (n_fr, n_points, 3)
+
+
         for i, fr_vertices in enumerate(fractures_vertices):
-            # ref_fr_points = np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 0.0], [-1.0, 1.0, 0.0]]) # polovina
             vtxs = [bw.Vertex(p) for p in fr_vertices]
             edges = [bw.Edge(a, b) for a, b in zip(vtxs[:-1], vtxs[1:])]
+            edges.append(bw.Edge(vtxs[-1], vtxs[0]))
             face = bw.Face(edges)
             faces.append(face)
 
