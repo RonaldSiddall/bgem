@@ -110,7 +110,7 @@ class BaseShape:
     def disc_approx(n_sides=8, scale=(1.0, 1.0)):
         """
         Return (n_sides, 3) array with coordinates of regular polygon
-        inscribed to the circle or ellipse with radius/radii 'scale'.
+        inscribed to the circle with radius 'scale'.
         Z coordinate set to 0.
         :param n_sides:
         :param scale: radius of circle or two radii (r_x, r_y) of the ellipse
@@ -131,7 +131,7 @@ class BaseShape:
         :param n_sides: only used by ellipse implementation,
         :return: ndarray (n_sides, 3)
         """
-        points_3d = self.disc_approx(self.n_sides, scale=self.scale)
+        points_3d = self.disc_approx(self.n_sides, scale=self.R)
 
         return points_3d
 
@@ -848,15 +848,30 @@ class FractureSet:
     def AABB(self):
         """
         Axis Aligned Bounding Box for each fracture.
-        :return:
+
+        See this blog: https://iquilezles.org/articles/diskbbox/
+        AABB of an ellipse with axes U, V with center at origin:
+        AABB[ax] = +/-sqrt( U[ax]**2 + V[ax]**2)
+
+        The For given normal the formula is:
+        AABB[ax] = +/- R * sqrt(1-N[ax]**2)
+
+        That is AABB of the cicumflex disc.
+        Tight AABB for a non 1:1 aspect ratio fracture
+        would be much more complicated.
+
+        :return: AABB corners as the array of shape: (N, 2, 3)
+        min corner: AABB[:, 0, :], max corner AABB[:, 1, :]
+
+        TODO: Do better! AABB is bounding, but not tight, gap is about 16%.
         """
-        max_radii = np.max
-        min_corner = np.min(self.center, axis=0)
-        max_corner = np.max(self.center, axis=0)
+        max_radii = np.max(self.radius, axis=1) * self.base_shape.R
+        corners = self.center[:,None, :] + np.stack([-max_radii, +max_radii], axis=1)[:, :, None]
+        return corners
 
 
     @fn.cached_property
-    def transform_mat(self):
+    def rotation_mat(self):
         """
         Rotate and scale matrices for the fractures. The full transform involves 'self.center' as well:
         ambient_space_points = self.center + self.transform_mat @ local_fr_points[:, None, :]
@@ -912,16 +927,57 @@ class FractureSet:
             SS_xy,
             SS_z[:, None]
         ], axis=1)
-        scaled_trans_x = SS * self.radius[:, 0:1]
-        scaled_trans_y = np.cross(N, SS, axis=1) * self.radius[:, 1:2]
+        scaled_trans_x = SS     #* self.radius[:, 0:1]
+        scaled_trans_y = np.cross(N, SS, axis=1)    #* self.radius[:, 1:2]
         trans_z = N
-        trans_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=2)
+        rot_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=2)
+        return rot_mat
+
+    @fn.cached_property
+    def transform_mat(self):
+        """
+        Rotate and scale matrices for the fractures. The full transform involves 'self.center' as well:
+        ambient_space_points = self.center + self.transform_mat @ local_fr_points[:, None, :]
+
+        The Z- local axis is transformed to normal N (assumed unit).
+        The shape_axis S = [sx, sy, 0] must be rotated  to SS by the rotation that rotates Z -> N.
+        Then SS is transformation of the local X axis.
+        The transformation of the Y axis is then computed by the corss product.
+
+        Let's compute S':
+        1. Z -> N rotation unit axis K = [-Ny, Nx, 0] / Nxy
+        2. K . S = Sx Ny - Sy Nx
+        3. follow Rodriguez formula proof, split S into part parallel (p) with K and ortogonal (o) to K
+           Sp = (K.S) K
+           So = S - Sp
+        4. In the plane perpendicular to K,
+           we have vertical component giving: cos(th) = Nz
+           and horizontal component giving sin(th) = Nxy = sqrt(Nx^2 + Ny^2)
+        5. We rotate So by angle th:
+           SSo[z] = -|So| Nxy *sng(Nx)
+           SSo[x,y] = (So [x,y]) Nz
+        6. SSp = Sp
+        7. Sum:
+           SS = SSo + SSp :
+           SSx = Spx + (Nz)Sox
+           SSy = Spy + (Nz)Soy
+           SSz = -|So| Nxy *sng(Nx)
+        Finally, the third vector of the rotated bases is   cross(N, S')
+        TODO: find a better vector representation of the rotations, allowing faster construction of the transfrom matrix
+        :return: Shape (N, 3, 3).
+        """
+        trans_mat = (self.rotation_mat[:, :, :]).copy()
+        trans_mat[:, :, 0] *=  (self.radius[:, 0])[:, None]
+        trans_mat[:, :, 1] *=  (self.radius[:, 1])[:, None]
         return trans_mat
 
     @fn.cached_property
     def inv_transform_mat(self):
         """ TODO transpose of just rot mat, deal with scaling as well."""
-        return None #self.transform_mat.transpose([0, 2, 1])
+        inv_trans_mat = (self.rotation_mat[:, :, :].transpose((0, 2, 1))).copy()
+        inv_trans_mat[:, 0, :] /=  (self.radius[:, 0])[:, None]
+        inv_trans_mat[:, 1, :] /=  (self.radius[:, 1])[:, None]
+        return inv_trans_mat
 
     def make_fractures_gmsh(self, gmsh_geom: 'GeometryOCC', transform=None):
         """
