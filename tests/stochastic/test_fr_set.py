@@ -1,9 +1,54 @@
 import numpy as np
 import pytest
+from pathlib import Path
 from bgem import stochastic
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
+
+script_dir = Path(__file__).absolute().parent
+workdir = script_dir / "sandbox"
+
+
+fracture_stats = dict(
+    NS={'concentration': 17.8,
+     'p_32': 0.094,
+     'plunge': 1,
+     'power': 2.5,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 292},
+    NE={'concentration': 14.3,
+     'p_32': 0.163,
+     'plunge': 2,
+     'power': 2.7,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 326},
+    NW={'concentration': 12.9,
+     'p_32': 0.098,
+     'plunge': 6,
+     'power': 3.1,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 60},
+    EW={'concentration': 14.0,
+     'p_32': 0.039,
+     'plunge': 2,
+     'power': 3.1,
+     'r_max': 564,
+     'r_min': 0.038,
+     'trend': 15},
+    HZ={'concentration': 15.2,
+     'p_32': 0.141,
+     'power': 2.38,
+     'r_max': 564,
+     'r_min': 0.038,
+     #'trend': 5
+     #'plunge': 86,
+     'strike': 95,
+     'dip': 4
+     })
 
 
 """
@@ -78,24 +123,38 @@ def test_base_shapes(base_shape):
     assert abs(area_estimate - 1.0) < 0.01
 
 
+def check_ortogonal_columns(mat):
+    product = mat.T @ mat
+    product_offdiag = product - np.diag(np.diag(product))
+    assert np.allclose(product_offdiag, np.zeros_like(product))
 
 
 def check_fractures_transform_mat(fr_list):
     dfn = stochastic.FractureSet.from_list(fr_list)
+    # BREP of the fractures
+    # dfn.make_fractures_brep(workdir / "transformed")
+
     dfn_base = dfn.transform_mat @ np.eye(3)
+
     for i, fr in enumerate(fr_list):
+        print(f"fr #{i}")
         base_vectors = dfn_base[i]
         assert base_vectors.shape == (3, 3)
         ref_base_1 = (fr.transform(np.eye(3)) - fr.center).T
         # Origianl fracture transform with respect to DFN transfom matrix.
         assert np.allclose(dfn.center[i], fr.center)
-        assert np.allclose(base_vectors, ref_base_1)
+
+        # Test base is perpendicular
+        check_ortogonal_columns(ref_base_1)
+        check_ortogonal_columns(base_vectors)
+
+        assert np.allclose(base_vectors, ref_base_1), f"fr #{i} diff:\n {base_vectors}\n {ref_base_1}\n"
+
         # Tak a single fracutre from DFN and compare its transfom to the DFN transform.
         fr_2 = dfn[i]
         ref_base_2 = (fr_2.transform(np.eye(3)) - fr.center).T
         assert np.allclose(dfn.center[i], fr_2.center)
         assert np.allclose(base_vectors, ref_base_2)
-
 
     # Check rotation matrix
     assert np.allclose( dfn.rotation_mat.transpose((0, 2, 1)) @ dfn.rotation_mat, np.eye(3))
@@ -108,45 +167,7 @@ def check_fractures_transform_mat(fr_list):
 
 
 
-fracture_stats = dict(
-    NS={'concentration': 17.8,
-     'p_32': 0.094,
-     'plunge': 1,
-     'power': 2.5,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 292},
-    NE={'concentration': 14.3,
-     'p_32': 0.163,
-     'plunge': 2,
-     'power': 2.7,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 326},
-    NW={'concentration': 12.9,
-     'p_32': 0.098,
-     'plunge': 6,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 60},
-    EW={'concentration': 14.0,
-     'p_32': 0.039,
-     'plunge': 2,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 15},
-    HZ={'concentration': 15.2,
-     'p_32': 0.141,
-     'power': 2.38,
-     'r_max': 564,
-     'r_min': 0.038,
-     #'trend': 5
-     #'plunge': 86,
-     'strike': 95,
-     'dip': 4
-     })
+
 
 def get_dfn_sample(seed=123):
     # generate fracture set
@@ -168,11 +189,14 @@ def test_transform_mat():
     Apply transfrom for
     :return:
     """
+    # Tests without shape rotation.
+
     #shape_id = stochastic.EllipseShape.id
     shape_id = stochastic.RectangleShape.id
     fr = lambda s, c, n: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n) / np.linalg.norm(n))
     fractures = [
-        fr([2, 3], [1, 2, 3], [0, 0, 1]),
+        fr([1, 1], [1, 2, 3], [0, 0, 1]),
+        fr([2, 2], [1, 2, 3], [0, 0, 1]),
         fr([2, 3], [1, 2, 3], [1, 1, 0.2]),
         fr([2, 3], [1, 2, 3], [-1, -1, 0.2]),
         fr([2, 3], [1, 2, 3], [0, 0, -1]),
@@ -185,17 +209,24 @@ def test_transform_mat():
     check_fractures_transform_mat(fractures)
 
     fr = lambda s, c, n, ax: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n)/np.linalg.norm(n), np.array(ax)/np.linalg.norm(ax))
+    s = [2, 2] #[2, 3]
     fractures = [
-        fr([2, 3], [1, 2, 3], [0, 0, 1], [1, 1]),
-        fr([2, 3], [1, 2, 3], [1, -0.5, -3], [1, 2]),
+        fr(s, [0,0,0], [0, 0, 1], [1, 1]),
+        fr(s, [0,0,0], [0, 0, 1], [-1, 1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [-1, -1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [1, -1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [1, 2]),
+        fr(s, [0, 0, 0], [1, -0.5, -3], [1, 0]),
 
-        #fr([2, 3], [1, 2, 3], [0, 0, -1]),
-        #fr([2, 3], [0, 0, 0], [0, 1, 0]),
-        #fr([2, 3], [0, 0, 0], [0, -1, 0]),
-        #fr([2, 3], [0, 0, 0], [1, 0, 0]),
-        #fr([2, 3], [0, 0, 0], [-1, 0, 0]),
-        #fr([2, 3], [0, 0, 0], [1, 2, 3] / np.linalg.norm([1,2,3])),
-        #stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))
+        fr(s, [1, 2, 3], [0, 1, 1], [1, 2]),            # out of order
+        fr(s, [1, 2, 3], [1, -0.5, -3], [1, 2]),
+        fr(s, [1, 2, 3], [1, -0.5, -3], [-1, -1]),              # out of order
+
+        fr(s, [1, 2, 3], [0, 0, -1], [1,0]),
+        fr(s, [0, 0, 0], [0, 1, 0], [1,0]),
+        fr(s, [0, 0, 0], [0, -1, 0], [1,0]),
+        fr(s, [0, 0, 0], [1, 0, 0], [1,0]),
+        fr(s, [0, 0, 0], [-1, 0, 0], [1,0]),
     ]
     check_fractures_transform_mat(fractures)
 

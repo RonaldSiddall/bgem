@@ -20,6 +20,7 @@ TODO:
    ... possible extensions to heterogenous models
 .. TO Be Done
 """
+import pathlib
 from typing import *
 
 import attrs
@@ -466,7 +467,7 @@ class Fracture:
 
     @property
     def shape_angle(self):
-        angle = np.arccos(self.shape_axis[0])
+        angle = np.arctan2(self.shape_axis[1], self.shape_axis[0])
         return angle
 
     @property
@@ -766,7 +767,7 @@ class FractureSet:
         shift = shift % separation
         plates = [
             Fracture(
-                SquareShape,
+                RectangleShape.id,
                 radius=diag,
                 center=(i - n_fr // 2) * normal + shift * normal + box / 2.0,
                 normal=normal / separation,
@@ -917,7 +918,7 @@ class FractureSet:
         SS_xy = S_p + cos_th * S_o
         # ?? th is in (0, pi) -> sin(th) always positive
         #pos_nx = np.logical_xor(N[:, 0] > 0, N[:, 2] < 0)
-        pos_nx = N[:, 0] > 0
+        pos_nx = (N[:, None, 0:2] @ self.shape_axis[:, :, None])[:, 0, 0] > 0
         sin_th = norm_Nxy
         sin_th[pos_nx] = - sin_th[pos_nx]
         SS_z = np.linalg.norm(S_o, axis=1) * sin_th
@@ -932,6 +933,91 @@ class FractureSet:
         trans_z = N
         rot_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=2)
         return rot_mat
+
+
+    # @fn.cached_property
+    # def rotation_mat(self):
+    #     """
+    #     Rotate and scale matrices for the fractures. The full transform involves 'self.center' as well:
+    #     ambient_space_points = self.center + self.transform_mat @ local_fr_points[:, None, :]
+    #
+    #     The Z- local axis is transformed to normal N (assumed unit).
+    #     The shape_axis S = [sx, sy, 0] must be rotated  to SS by the rotation that rotates Z -> N.
+    #     Then SS is transformation of the local X axis.
+    #     The transformation of the Y axis is then computed by the corss product.
+    #
+    #     Let's compute S':
+    #     1. Z -> N rotation unit axis K = [-Ny, Nx, 0] / Nxy
+    #     2. K . S = Sx Ny - Sy Nx
+    #     3. follow Rodriguez formula proof, split S into part parallel (p) with K and ortogonal (o) to K
+    #        Sp = (K.S) K
+    #        So = S - Sp
+    #     4. In the plane perpendicular to K,
+    #        we have vertical component giving: cos(th) = Nz
+    #        and horizontal component giving sin(th) = Nxy = sqrt(Nx^2 + Ny^2)
+    #     5. We rotate So by angle th:
+    #        SSo[z] = -|So| Nxy *sng(Nx)
+    #        SSo[x,y] = (So [x,y]) Nz
+    #     6. SSp = Sp
+    #     7. Sum:
+    #        SS = SSo + SSp :
+    #        SSx = Spx + (Nz)Sox
+    #        SSy = Spy + (Nz)Soy
+    #        SSz = -|So| Nxy *sng(Nx)
+    #     Finally, the third vector of the rotated bases is   cross(N, S')
+    #     TODO: find a better vector representation of the rotations, allowing faster construction of the transfrom matrix
+    #     :return: Shape (N, 3, 3).
+    #     """
+    #     N = self.normal
+    #     assert np.allclose(np.linalg.norm(N, axis=1), 1)
+    #     Nxy = N[:, 0:2]
+    #     norm_Nxy = np.linalg.norm(Nxy, axis=1)
+    #     Nxy_norm = Nxy / norm_Nxy
+    #     arg_small = np.argwhere(Nxy_norm < 1e-13)[:, 0]
+    #     Nxy_norm[arg_small, :] = np.array([1, 0], dtype=float)
+    #
+    #     #Nxy_ort = np.stack([-N[:, 1], N[:, 0]], axis=1)
+    #     #norm_Nxy_ort = np.linalg.norm(Nxy_ort, axis=1)
+    #     # axis of rotation (0, 0, 1) -> normal
+    #     #K = Nxy_ort / norm_Nxy_ort[:, None]
+    #     #arg_small = np.argwhere(norm_Nxy_ort < 1e-13)[:, 0]
+    #     #K[arg_small, :] = np.array([1, 0], dtype=float)
+    #     #K_dot_S = self.shape_axis[:, None, :] @ K[:, :, None]
+    #
+    #     S_dot_Nxy = (self.shape_axis[:, None, :] @ Nxy_norm[:, :, None])[:, 0, :]
+    #
+    #     # component of shape_axis parallel with axis L
+    #     #S_p = K_dot_S[:, 0, :] * K
+    #     # component of shape_axis ortogonal to axis
+    #     #S_o = self.shape_axis - S_p
+    #
+    #     S_o_ = S_dot_Nxy * Nxy_norm
+    #     S_p_ = self.shape_axis - S_o_
+    #
+    #     # We compute sin and cos of the rotation angle theta
+    #     cos_th = N[:, 2:3]
+    #     SS_xy = S_p_ + cos_th * S_o_
+    #     # S_o is in direction of Nxy, but sign may differ
+    #     # sin_th is negative iff sign(S_o) == Nxy
+    #     # sin_th is positive iff sign(S_o) != Nxy
+    #     ## ?? th is in (0, pi) -> sin(th) always positive
+    #     ## pos_nx = np.logical_xor(N[:, 0] > 0, N[:, 2] < 0)
+    #
+    #     neg_sin = S_dot_Nxy[:, 0] > 0
+    #     sin_th = norm_Nxy
+    #     sin_th[neg_sin] = - sin_th[neg_sin]
+    #     SS_z = np.linalg.norm(S_o_, axis=1) * sin_th
+    #
+    #     # Construct the rotated X axis SS vector, shape (N, 3)
+    #     SS = np.concatenate([
+    #         SS_xy,
+    #         SS_z[:, None]
+    #     ], axis=1)
+    #     scaled_trans_x = SS     #* self.radius[:, 0:1]
+    #     scaled_trans_y = np.cross(N, SS, axis=1)    #* self.radius[:, 1:2]
+    #     trans_z = N
+    #     rot_mat = np.stack([scaled_trans_x, scaled_trans_y, trans_z], axis=2)
+    #     return rot_mat
 
     @fn.cached_property
     def transform_mat(self):
@@ -1012,7 +1098,7 @@ class FractureSet:
         fracture_fragments = gmsh_geom.fragment(*shapes)
         return fracture_fragments, region_map
 
-    def make_fractures_brep(self, brep_name: str):
+    def make_fractures_brep(self, brep_name: Union[str, pathlib.Path]):
         """
         Create the BREP file from a list of fractures using the brep writer interface.
         """
@@ -1020,16 +1106,19 @@ class FractureSet:
         # dimensions = geometry_dict["box_dimensions"]
 
         #print("n fractures:", len(self))
-
+        if isinstance(brep_name, str):
+            brep_name = pathlib.Path(brep_name)
+        brep_name = brep_name.with_suffix(".brep")
         faces = []
         base_vertices = self.base_shape.vertices(8)
-        # Legacy transform
-        #fr_vtxs = lambda fr : fr.transform(base_vertices) - fr.center
-        #fr_vtx_ref = np.array([fr_vtxs(fr) for fr in self])
 
-        fractures_vertices = self.transform_mat @ (base_vertices.T)[None, :, :]   # (n_fr, 3, 3) @ (1, 3, n_points) -> (n_fr, 3, n_points)
-        fractures_vertices = fractures_vertices.transpose((0, 2, 1))
-        fractures_vertices = fractures_vertices + self.center[:, None, :] # (n_fr, 3, n_points) -> (n_fr, n_points, 3)
+        # Legacy transform
+        fr_vtxs = lambda fr : fr.transform(base_vertices) # fr.center
+        fractures_vertices = np.array([fr_vtxs(fr) for fr in self])
+
+        #fractures_vertices = self.transform_mat @ (base_vertices.T)[None, :, :]   # (n_fr, 3, 3) @ (1, 3, n_points) -> (n_fr, 3, n_points)
+        #fractures_vertices = fractures_vertices.transpose((0, 2, 1))
+        #fractures_vertices = fractures_vertices + self.center[:, None, :] # (n_fr, 3, n_points) -> (n_fr, n_points, 3)
 
 
         for i, fr_vertices in enumerate(fractures_vertices):
