@@ -633,7 +633,7 @@ class FrFamily:
         shape_angle = self.shape_angle.sample_angle(size=n_fractures)
         shape_axis = np.stack((np.cos(shape_angle), np.sin(shape_angle)), axis=1)
         return fr_set.FractureSet(
-            shape_idx=shape.id,
+            base_shape_idx=shape.id,
             radius=radii,
             normal=self.orientation.sample_normal(size=n_fractures),
             center=position_distribution.sample(size=n_fractures),

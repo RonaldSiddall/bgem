@@ -31,7 +31,6 @@ import numpy.typing as npt
 from bgem import fn
 from bgem.bspline import brep_writer as bw
 
-
 def embed_to_3d(points_2d):
     points_3d = np.concatenate((
         points_2d,
@@ -107,6 +106,15 @@ class BaseShape:
 
         return extrem_points + centers[:, None, :]
 
+
+    def are_points_inside(self, points):
+        """
+        Virtual method.
+        :param points: shape (N, 2)
+        :return: logical array (N,)
+        """
+        pass
+
     @staticmethod
     def disc_approx(n_sides=8, scale=(1.0, 1.0)):
         """
@@ -135,7 +143,6 @@ class BaseShape:
         points_3d = self.disc_approx(self.n_sides, scale=self.R)
 
         return points_3d
-
 
 class LineShape(BaseShape):
     """
@@ -454,7 +461,7 @@ class Fracture:
     # local coordinates of the vertices (xy - plane)
 
     @property
-    def shape_class(self):
+    def shape(self):
         return BaseShape.shape_for_id(self.shape_idx)
 
     @property
@@ -473,13 +480,13 @@ class Fracture:
     @property
     def vertices(self):
         if self._vertices is None:
-            _vertices = self.transform(self.shape_class._points)
+            _vertices = self.transform(self.shape._points)
         return _vertices
 
     @property
     def ref_vertices(self):
         if self._ref_vertices is None:
-            _ref_vertices = self.shape_class._points
+            _ref_vertices = self.shape._points
         return _ref_vertices
 
     @property
@@ -492,7 +499,7 @@ class Fracture:
 
     @property
     def scale(self):
-        return [self.r, self.r * self.aspect]
+        return np.array([self.r, self.r * self.aspect])
 
     @property
     def rotation_angle(self):
@@ -589,16 +596,16 @@ class Fracture:
         x_isec_false = []
         x_isec_start_vert_ind = []
 
-        bound_vec = np.zeros(self.shape_class._points.shape)
-        x_0_b = np.zeros(self.shape_class._points.shape)
+        bound_vec = np.zeros(self.shape._points.shape)
+        x_0_b = np.zeros(self.shape._points.shape)
 
         aspect = np.array([self.r, self.aspect * self.r, 1], dtype=float) # 0.5 *
-        points = self.shape_class._points #* aspect[None, :]  # self.shape_class._points
+        points = self.shape._points #* aspect[None, :]  # self.shape_class._points
 
 
 
         col2 = loc_direct[0]
-        for i in range(0, self.shape_class._points.shape[0]-1):
+        for i in range(0, self.shape._points.shape[0] - 1):
             col1 = points[i]  - points[i-1]
             rhs = (x_0 - points[i-1])[0]
             det = col1[0] * col2[1] - col1[1] * col2[0]
@@ -685,9 +692,17 @@ class Fracture:
 
 
 def array_attr(shape, dtype=np.double, default=[]):
+    # Unfortunately broadcast_to does not support -1 in the target_shape
+    # assume shape in form (-1, ...).
+    assert shape[0] == -1
+
+    def converter(x):
+        rev_shape = reversed( (len(x), *shape[1:]) )
+        return np.broadcast_to(np.array(x).T, rev_shape).T
+
     return attrs.field(
         type=npt.NDArray[dtype],
-        converter=np.array,
+        converter=converter,
         default=default)
 
 
@@ -709,7 +724,7 @@ class FractureSet:
     #base_shapes : List[Any]                 # Unique reference shape classes
 
     #shape_idx = array_attr(shape=(-1,), dtype=np.int32)           # Base shape type index into 'base_shapes' list.
-    shape_idx = attrs.field(type=int)                             # keep fracture sets of common shape, that is far enough for practical applications
+    base_shape_idx = attrs.field(type=int)                             # keep fracture sets of common shape, that is far enough for practical applications
     radius = array_attr(shape=(-1, 2), dtype=np.double)           # shape (n_fractures, 2), X and Y scaling of the reference shape.
     center = array_attr(shape=(-1, 3), dtype=np.double)           # center (n_fractures, 3); translation of the reference shape to actual position
     normal = array_attr(shape=(-1, 3), dtype=np.double)           # fracture unit normal vectors.
@@ -732,7 +747,7 @@ class FractureSet:
 
     @property
     def base_shape(self):
-        return BaseShape.shape_for_id(self.shape_idx)
+        return BaseShape.shape_for_id(self.base_shape_idx)
 
     @property
     def _base_shape_area(self):
@@ -746,7 +761,7 @@ class FractureSet:
         """
         Array of fracture areas
         """
-        shape_factor = self._base_shape_area[self.shape_idx]
+        shape_factor = self._base_shape_area[self.base_shape_idx]
         return shape_factor * np.prod(self.radius, axis=1)
 
     @classmethod
@@ -781,7 +796,7 @@ class FractureSet:
     def area_sorted(cls, other: 'FractureSet') -> 'FractureSet':
         area_order = np.argsort(other.area)
         return cls(
-            shape_idx=other.shape_idx,
+            base_shape_idx=other.base_shape_idx,
             radius=other.radius[area_order],
             center=other.center[area_order],
             normal=other.normal[area_order],
@@ -830,7 +845,7 @@ class FractureSet:
 
     @classmethod
     def merge(cls, fr_sets: List['FractureSet'], population=None) -> 'FractureSet':
-        shape_idx_set = {fs.shape_idx for fs in fr_sets}
+        shape_idx_set = {fs.base_shape_idx for fs in fr_sets}
         assert len(shape_idx_set) == 1
         shape_idx = list(shape_idx_set)[0]
         ccat = lambda attr : cls._concat_attr(fr_sets, attr)
@@ -1137,7 +1152,7 @@ class FractureSet:
     def __getitem__(self, item):
         family_idx = self.family[item]
         return Fracture(
-            shape_idx=self.shape_idx,
+            shape_idx=self.base_shape_idx,
             radius=self.radius[item, :],
             center=self.center[item, :],
             normal=self.normal[item, :],

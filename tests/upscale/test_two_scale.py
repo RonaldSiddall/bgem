@@ -18,10 +18,8 @@ TODO:
 - implement ellipse shape meshing for flow
 - implement rasterization (decovalex based) for rectangles and polygons
 """
-from typing import *
 
 import pytest
-import yaml
 import shutil
 from pathlib import Path
 
@@ -31,15 +29,13 @@ logger = logging.getLogger()
 
 
 import numpy as np
-import attrs
 import pyvista as pv
 
 from bgem import stochastic
 from bgem.gmsh import gmsh, options
 from mesh_class import Mesh
 from bgem.core import call_flow, dotdict, workdir as workdir_mng
-from bgem.upscale import fem_plot, fem, voigt_to_tn, tn_to_voigt, FracturedMedia, voxelize
-import decovalex_dfnmap as dmap
+from bgem.upscale import fem_plot, fem, voigt_to_tn, FracturedMedia, decovalex_dfnmap as dmap
 from scipy.interpolate import LinearNDInterpolator
 
 script_dir = Path(__file__).absolute().parent
@@ -87,39 +83,6 @@ def fracture_fixed_set():
     return fractures
 
 
-def create_fractures_rectangles(gmsh_geom, fractures:FrozenSet, base_shape: gmsh.ObjectSet,
-                                shift = np.array([0,0,0])):
-    """
-
-    :param gmsh_geom:
-    :param fractures:
-    :param base_shape:
-    :param shift:
-    :return:
-    """
-    # From given fracture date list 'fractures'.
-    # transform the base_shape to fracture objects
-    # fragment fractures by their intersections
-    # return dict: fracture.region -> GMSHobject with corresponding fracture fragments
-    if len(fractures) == 0:
-        return []
-
-    shapes = []
-    region_map = {}
-    for i, fr in enumerate(fractures):
-        shape = base_shape.copy()
-        print("fr: ", i, "tag: ", shape.dim_tags)
-        region_name = f"fam_{fr.family}_{i:03d}"
-        shape = shape.scale([fr.rx, fr.ry, 1]) \
-            .rotate(axis=[0,0,1], angle=fr.shape_angle) \
-            .rotate(axis=fr.rotation_axis, angle=fr.rotation_angle) \
-            .translate(fr.center + shift) \
-            .set_region(region_name)
-        region_map[region_name] = i
-        shapes.append(shape)
-
-    fracture_fragments = gmsh_geom.fragment(*shapes)
-    return fracture_fragments, region_map
 
 
 def ref_solution_mesh(work_dir, domain_dimensions, fractures, fr_step, bulk_step):
@@ -129,6 +92,7 @@ def ref_solution_mesh(work_dir, domain_dimensions, fractures, fr_step, bulk_step
     gopt.ToleranceBoolean = 0.001
     box = factory.box(domain_dimensions)
 
+    # TODO: use shape from fractures
     fractures, fr_region_map = create_fractures_rectangles(factory, fractures, factory.rectangle())
     fractures_group = factory.group(*fractures).intersect(box)
     box_fr, fractures_fr = factory.fragment(box, fractures_group)

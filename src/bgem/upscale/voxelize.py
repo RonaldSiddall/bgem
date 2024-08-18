@@ -1,6 +1,7 @@
 from typing import *
 from pathlib import Path
 import csv
+import itertools
 import math
 
 import attrs
@@ -8,15 +9,36 @@ from functools import cached_property
 from bgem.stochastic import Fracture
 from bgem.upscale import Grid
 from bgem.stochastic import FractureSet, EllipseShape, PolygonShape
+
 import numpy as np
 """
 Voxelization of fracture network.
 Task description:
-Input: List[Fracutres], DFN sample, fractures just as gemoetric objects.
-Output: Intersection arrays: cell_idx, fracture_idx, intersection volume estimate
+Input: List[Fracutres], DFN sample, fractures just as geometric objects.
+Output: Intersection arrays: cell_idx, fracture_id  x, intersection volume estimate
 (taking fr aperture and intersectoin area into account)
+That could be rather encoded into a sparse matrix or two for interpolation 
+of bulk and fracture values to the field on the target domain. 
+While the separate matrix for bulk and for fracture values may be better in some cases,
+all use cases are covered by a single interpolation matrix multiplying a vector composed 
+of both fracture and bulk values.
+Covered cases:
+- input fields on a VTK/GMSH mesh (suitable internal format for the mesh ieadlly separate array for triangles, and array for tetrahedras
+- bulk on separate grid, fracture fields constant on fractures or their fragments
+- bulk on the trager grid, ...
+- bulk on any points first interpolated to the target grid
 
-Possible approaches:
+TODO:
+1. More restricted API.
+   a) function to project bulk fiedls between grids, first implement using SCIPY interpolation.
+   b) computing intersection matrices to comibne bulk field on the target grid and fracture field values
+      into the traget grid field.
+   c) function to apply intersection object to particular bulk and fracture fields (support of fields of arbitrary shape: scalar, vector, tensor valued fields)
+       
+2. Future API using connected bulk and fracture field vectors and common sparse matrix.
+   Desing after experience with restriced API. 
+
+Possible intersection approaches:
 
 - for each fracture -> AABB -> loop over its cells -> intersection test -> area calculation
 - Monte Carlo : random points on each fracture (N ~ r**2), count point numbers in each cell, weights -> area/volume estimate
@@ -51,14 +73,289 @@ TODO:
 
 """
 
+def base_shape_interior_grid(shape, step:float) -> np.ndarray:
+    """
+    Return points of a grid that are inside the reference shape.
+    The grid is with `step` resolution extending from origin
+    in the XY reference plane of the shape.
+    Return shape (N, 2)
+    """
+    aabb = shape.aabb
+    points = Grid.from_step(aabb[1] - aabb[0], step, origin=aabb[0]).barycenters()
+    are_inside = shape.are_points_inside(points)
+    selected_pts = points[are_inside]
+    return selected_pts
+
+
+@attrs.define
+class FracturedDomain:
+    """
+    Structured bulk grid + unstructured fracture set.
+    The input of the voxelization procedure.
+
+    Specification of the fracture - target grid geometry.
+    This is in priciple enough to construct basic voxelization case.
+    other cases may need information about source grid/mesh.
+    """
+    dfn: FractureSet                #
+    fr_cross_section: np.ndarray    # cross_sections of fractures
+    grid: Grid                      # target homogenization grid
+
+
+
+@attrs.define
+class Intersection:
+    """
+    Intersection of fractures with the grid.
+    That is a sparse matrix for contribution of the fractures,
+    1 - rowsum  is scaling factor of the underlaied bulk array.
+
+    First we will proceed with this design moving to actual sparse matrix implementation later on.
+    The interpolation would be:
+
+    result_grid_field[i_cell] = (1-rowsum[i_cell])/cell_volume[i_cell] * bulk_grid_field[i_cell]
+                                + volume[k] * (cells[k] == i_cell) * (fracture[k] == i_fr) * fr_field[i_fr]
+    The sparse
+    TODO: refine design, try to use sparse matrix for interpolation of a connected bulk-fracture values vector
+    """
+    domain: FracturedDomain   # The source object.
+    i_cell: np.ndarray        # sparse matrix rows, cell idx of intersection
+    i_fr: np.ndarray          # sparse matrix columns
+    isec: np.ndarray          # effective volume of the intersection
+    bulk_scale: np.ndarray    #
+                              # used to scale bulk field
+
+    @property
+    def grid(self):
+        return self.domain.grid
+
+    @cached_property
+    def bulk_scale(self):
+        scale = np.ones(self.grid.n_elements)
+        scale[self.i_cell] -= self.isec
+        return scale
+
+    def cell_field(self):
+        field = np.zeros(self.grid.n_elements)
+        field[self.i_cell] = 1.0
+        return field
+
+    def count_fr_cells(self):
+        """
+        Array of count of intersecting cells for every fracture.
+        :return:
+        """
+        fr_counts = np.zeros(len(self.domain.dfn))
+        unique_values, counts = np.unique(self.i_fr, return_counts=True)
+        fr_counts[unique_values] = counts
+        return fr_counts
+
+    def interpolate(self, bulk_field, fr_field):
+        assert len(bulk_field) == self.domain.grid.n_elements
+        assert len(fr_field) == len(self.domain.dfn)
+        combined = bulk_field * self.bulk_scale
+        combined[self.i_cell] += self.isec * fr_field[self.i_fr]
+
+    def fr_tensor_2(self, fr_cond_scalar):
+        """
+
+        :return:
+        """
+        dfn = self.domain.dfn
+        #normal_axis_step = grid_step[np.argmax(np.abs(n))]
+        return fr_cond_scalar[:, None, None] * (np.eye(3) - dfn.normal[:, :, None] * dfn.normal[:, None, :]) #/ normal_axis_step
+
+    def perm_aniso_fr_values(fractures, fr_transmisivity: np.array, grid_step) -> np.ndarray:
+        '''Calculate anisotropic permeability tensor for each cell of ECPM
+           intersected by one or more fractures. Discard off-diagonal components
+           of the tensor. Assign background permeability to cells not intersected
+           by fractures.
+           Return numpy array of anisotropic permeability (3 components) for each
+           cell in the ECPM.
+
+           fracture = numpy array containing number of fractures in each cell, list of fracture numbers in each cell
+           ellipses = [{}] containing normal and translation vectors for each fracture
+           T = [] containing intrinsic transmissivity for each fracture
+           d = length of cell sides
+           k_background = float background permeability for cells with no fractures in them
+        '''
+        assert len(fractures) == len(fr_transmisivity)
+        # Construc array of fracture tensors
+        def full_tensor(n, fr_cond):
+            normal = np.array(n)
+            normal_axis_step = grid_step[np.argmax(np.abs(n))]
+            return fr_cond * (np.eye(3) - normal[:, None] * normal[None, :]) / normal_axis_step
+
+        return np.array([full_tensor(fr.normal, fr_cond)  for fr, fr_cond in zip(fractures, fr_transmisivity)])
+
+
+    def perm_iso_fr_values(fractures, fr_transmisivity: np.array, grid_step) -> np.ndarray:
+        '''Calculate isotropic permeability for each cell of ECPM intersected by
+         one or more fractures. Sums fracture transmissivities and divides by
+         cell length (d) to calculate cell permeability.
+         Assign background permeability to cells not intersected by fractures.
+         Returns numpy array of isotropic permeability for each cell in the ECPM.
+
+         fracture = numpy array containing number of fractures in each cell, list of fracture numbers in each cell
+         T = [] containing intrinsic transmissivity for each fracture
+         d = length of cell sides
+         k_background = float background permeability for cells with no fractures in them
+        '''
+        assert len(fractures) == len(fr_transmisivity)
+        fr_norm = np.array([fr.normal for fr in fractures])
+        normalised_transmissivity = fr_transmisivity / grid_step[np.argmax(np.abs(fr_norm), axis=1)]
+        return normalised_transmissivity
+
+
+def intersection_decovalex(dfn:FractureSet, grid: Grid) -> 'Intersection':
+    """
+    Based on DFN map / decovalex 2023 approach. Support for different fracture shapes,
+    vectorization.
+    Steps:
+    1. for fractures compute arrays that could be computed by vector operations:
+        - fracture normal
+        - fracture transform matrix
+        - fracture angle (??)
+        - bounding box (depend on shape)
+    2. estimate set of candidate cells:
+        - bounding box
+        - future: axis closses to normal for each point in AABB projection
+          determine fracture intersection (regular pattern), add 4/8 neighbor cells
+          Only do for larger fractures
+    3. project nodes of candidate cells, need node_i_coord to i_node map,
+       use 2D matrix of the AABB projection
+    4. Fast identification of celles within distance range from the fracture
+    5. Shape matching of the cells.
+    6. cell to fracture distance estimate
+        what could be computed in vector fassion
+    2. for each fracture determine cell centers close enough
+    3. compute XY local coords and if in the Shape
+
+    :param domain:
+    :return:
+    """
+    """
+    Estimate intersections between grid cells and fractures
+
+    Temporary interface to original map_dfn code inorder to perform one to one test.
+    """
+    import bgem.upscale.decovalex_dfnmap as dmap
+    assert dfn.base_shape_idx == EllipseShape.id
+
+    domain = FracturedDomain(dfn, np.ones(len(dfn)), grid)
+    ellipses = [dmap.Ellipse(fr.normal, fr.center, fr.scale*fr.shape.R) for fr in dfn]
+    d_grid = dmap.Grid.make_grid(domain.grid.origin, domain.grid.step, grid.dimensions)
+    d_fractures = dmap.map_dfn(d_grid, ellipses)
+    i_pairs = [(i_c, i_f) for i_f, fr in enumerate(d_fractures) for i_c in fr.cells]
+    if i_pairs:
+        i_cell, i_fr = zip(*i_pairs)
+    else:
+        i_cell = []
+        i_fr = []
+    # fr, cell = zip([(i_fr, i_cell)  for i_fr, fr in enumerate(fractures) for i_cell in fr.cells])
+    return Intersection(domain, np.array(i_cell, dtype=int), np.array(i_fr, dtype=int), 1.0)
+
+
+__rel_corner = np.array([[0, 0, 0], [1, 0, 0],
+                         [1, 1, 0], [0, 1, 0],
+                         [0, 0, 1], [1, 0, 1],
+                         [1, 1, 1], [0, 1, 1]])
+
+def intersect_cell(loc_corners: np.array, shape) -> bool:
+    """
+    loc_corners - shape (3, 8)
+    """
+    # check if cell center is inside radius of fracture
+    center = np.mean(loc_corners, axis=1)
+    if not shape.is_point_inside(*center[:2]):
+        return False
+
+    # cell center is in ellipse
+    # find z of cell corners in xyz of fracture
+
+    if np.min(loc_corners[2, :]) >= 0. or np.max(loc_corners[2, :]) < 0.:  # fracture lies in z=0 plane
+        # fracture intersects that cell
+        return False
+
+    return True
+
+def intersection_cell_corners(dfn:FractureSet, grid: Grid) -> 'Intersection':
+    domain = FracturedDomain(dfn, np.ones(len(dfn)), grid)
+
+    i_cell = []
+    i_fr = []
+    for i in range(len(dfn)):
+        i_box_min, i_box_max = grid.coord_aabb(dfn.AABB[i])
+        axis_ranges = [range(max(0, a), min(b, n)) for a, b, n in zip(i_box_min, i_box_max, grid.shape)]
+
+        grid_cumul_prod = np.array([1, grid.shape[0], grid.shape[0] * grid.shape[1]])
+        # X fastest running
+        for kji in itertools.product(*reversed(axis_ranges)):
+            # make X the first coordinate
+            ijk = np.flip(np.array(kji))
+            corners = grid.origin[None, :] + (ijk[None, :] + __rel_corner[:, :]) * grid.step[None, :]
+            loc_corners = dfn.inv_transform_mat[i] @ (corners - dfn.center[i]).T
+            if intersect_cell(loc_corners, dfn.base_shape):
+                #logging.log(logging.DEBUG, f"       cell {ijk}")
+                cell_index = ijk @ grid_cumul_prod
+                i_cell.append(cell_index)
+                i_fr.append(i)
+
+    return Intersection(domain, np.array(i_cell, dtype=int), np.array(i_fr, dtype=int), 1.0)
+
+
+def intersection_interpolation(domain: FracturedDomain) -> 'Intersection':
+    """
+    Approximate fast intersection for small number of fractures.
+    1. fractures are encoded as decreasing 2 powers: 2**(-i_fr), assume fractures sorted from large down
+    2. place points on the fractures with their values
+    3. project all points to ambient space by transform matrices (use advanced indexing)
+    4. summ to the cells
+    5. get few largest fractures in each cell
+    :param domain:
+    :return:
+    """
+def intersection_band_antialias(domain: FracturedDomain) -> 'Intersection':
+    """
+    This approach interprets fracutures as bands of given cross-section,
+    the interpolation is based on a fast approximation of the volume of the band-cell
+    intersection. The band-cell intersection candidates are determined by modified decovalex algorithm.
+    """
+    # logging.log(logging.INFO, f"Callculating Fracture - Cell intersections ...")
+    # dfn = domain.dfn
+    # grid = domain.grid
+    # for fr, aabb, trans_mat in zip(dfn, dfn.AABB, dfn.inv_transform_mat):
+    #     min_corner_cell, max_corner_cell = grid.project_points(aabb.reshape(2, 3))
+    #     axis_ranges = [range(max(0, a), min(b, n))
+    #                    for a, b, n in zip(min_corner_cell, max_corner_cell, grid.shape)]
+    #     itertools.product(*reversed(axis_ranges))
+    #     grid.
+    # return [fracture_for_ellipse(grid, ie, ellipse) for ie, ellipse in enumerate(ellipses)]
+    pass
+
+# ============ DEPRECATED
 
 @attrs.define
 class FracturedMedia:
     """
     Representation of the fractured media sample.
+    Geometry:
+    dfn + grid or dfn + arbitrary bulk points
+    Fields, should rather be separated for different type of quantities.
+    scalar (porosity): scalars (fields in future) on fractures, bulk scalar field on grid or at points
+    vector (velocity): vectors on fractures, vector bulk field
+    2d-tensor (conductivity): tensors on fractures, tensor bulk field
+        scalars on fractures -> imply scalar * (n \otimes n) tensor
+    4d-cauchy tensor: ?
+    4d-dispersion tensor: ? it should describe second order, i.e. variance of the velocity field
+    Seems reasonable to assume that all quantities are homogenized as weighted avarages of fracture and bulk values.
+
     1. DFN imply a box
     2. If we add a grid step we can specify bulk values on that grid
     3. voxelization grid could be independent. Make interpolation in each axis independently.
+
+    Depricated design. We should separate interpolation matrix from the value arrays.
+    TODO: use FracturedMedia instead separate arrays.
     """
     dfn: FractureSet                #
     fr_cross_section: np.ndarray    # shape (n_fractures,)
@@ -116,36 +413,27 @@ class FracturedMedia:
 
         radii = np.array(cls._read_dfn_file(workdir / __radiifile), dtype=float)
         n_frac = radii.shape[0]
-        shape_family = radii[:, 2]
         radii = radii[:, 0:2]
         assert radii.shape[1] == 2
         normals = np.array(cls._read_dfn_file(workdir / __normalfile), dtype=float)
         assert normals.shape == (n_frac, 3)
         translations = np.array([t for t in cls._read_dfn_file(workdir / __transfile) if t[-1] != 'R'], dtype=float)
         assert translations.shape == (n_frac, 3)
-        permeability = np.array(cls._read_dfn_file(workdir / __permfile), dtype=float)[:, 3]
-        apperture = np.array(cls._read_dfn_file(workdir / __aperturefile), dtype=float)[:, 3]
-        shape_idx = np.zeros(n_frac)
-        dfn = FractureSet([EllipseShape], shape_idx, radius, center, normal)
-        return cls(normals, centers, radii, )
-
-        ellipses = [Ellipse(np.array(n), np.array(t), np.array(r)) for n, t, r in zip(normals, translations, radii)]
-        return ellipses
+        # permeability = np.array(cls._read_dfn_file(workdir / __permfile), dtype=float)[:, 3]
+        # apperture = np.array(cls._read_dfn_file(workdir / __aperturefile), dtype=float)[:, 3]
+        shape_axis = np.repeat(n_frac, np.array([1, 0]), axis=0)
+        shape_idx = EllipseShape().id
+        dfn = FractureSet(shape_idx, radii, translations, normals, shape_axis)
+        return cls(dfn, None, None )
 
 
-@attrs.define
-class Intersection:
-    grid: Grid
-    fractures: List[Fracture]
-    i_fr_cell: np.ndarray
-    factor: np.ndarray = None
 
 
 def intersections_centers(grid: Grid, fractures: List[Fracture]):
     """
     Estimate intersections between grid cells and fractures
 
-    1. for all fractures compute what could be computed in vector fassion
+    1. for all fractures compute what could be computed in vector fashion
     2. for each fracture determine cell centers close enough
     3. compute XY local coords and if in the Shape
     """
@@ -277,6 +565,9 @@ class FractureVoxelize:
 
     The cached properties for the bulk weight vector and fracture interpolation sparse matrix for efficient multiplication
     are provided.
+    DEPRECATED DESIGN.
+    - The interpolation should be provided by the sparse interpolation matrix
+    - Input of the interpolation shuld be a connected vector of both bulk and fracture values
     """
     grid: 'Grid'            # Any grid composed of numbered cells.
     cell_ids: List[int]     # For each intersection the cell id.
@@ -377,78 +668,175 @@ def tensor_contribution(normal, slack, slack_axis, aperture):
 
 
 
-__rel_corner = np.array([[0, 0, 0], [1, 0, 0],
-                         [1, 1, 0], [0, 1, 0],
-                         [0, 0, 1], [1, 0, 1],
-                         [1, 1, 1], [0, 1, 1]])
 
-def intersect_cell(loc_corners: np.array, ellipse: Fracture) -> bool:
+# =================
+# Main interface functions
+# Usage example:
+# bulk_grid ... grid of the input bulk values
+# homo_grid ... output grid of homogenization
+# bulk_on_homo_field = bulk_interpolate(bulk_geometry, bulk_field, homo_grid)
+# # bulk_geometry is either grid or array of 3d points where bulk_field is given
+# A, B = voxelize_xyz(dfn, homo_grid)
+# homo_field = A * bulk_on_homo_field + B @ fracture_field
+# # or
+# homo_field = A * bulk_on_homo_field + B @ normal_field(dfn, scalar_fracture_field)
+# or a function
+# homogenize(voxel_obj(dfn, A, B, homo_grid), bulk_on_homo_field, scalar_fracture_field)
+# =================
+
+@attrs.define
+class Homogenize:
     """
-    loc_corners - shape (3, 8)
+    Class representing intersection of the fractures with a regular grid,
+    capable to perform avarage homogenization of individual fields.
+    dfn: FractureSet, ):
+
+    Several methods supported:
+    - source mixed mesh -> regular gird, using projection of Guass points tot he regular grid,
+      adaptive refinement relative to the target mesh
+    - decovalex voxelization  for bulk on a grid pre´fractures any
+    - eter meash
+
     """
-    # check if cell center is inside radius of fracture
-    center = np.mean(loc_corners, axis=1)
-    if np.sum(np.square(center[0:2] / ellipse.radius)) >= 1:
-        return False
+    domain: FracturedDomain
+    bulk_scaling: np.ndarray      # (N_homo_grid_cells, field_shape)
+    fracture_interpolation: Any     # sparse matrix (N_homo_grid_cells, n_fractures, field_shape)
 
-    # cell center is in ellipse
-    # find z of cell corners in xyz of fracture
+    @staticmethod
+    def mesh(mesh_path, grid: Grid):
+        grid_cell_volume = np.prod(grid.step) / 27
 
-    if np.min(loc_corners[2, :]) >= 0. or np.max(loc_corners[2, :]) <= 0.:
-        # All coreners on one side => no intersection.
-        return False
+        ref_el_2d = np.array([(0, 0), (1, 0), (0, 1)])
+        ref_el_3d = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)])
 
-    return True
 
-# def fracture_for_ellipse(grid: Grid, i_ellipse: int, ellipse: Ellipse) -> Fracture:
-#     # calculate rotation matrix for use later in rotating coordinates of nearby cells
-#     direction = np.cross([0,0,1], ellipse.normal)
-#     #cosa = np.dot([0,0,1],normal)/(np.linalg.norm([0,0,1])*np.linalg.norm(normal)) #frobenius norm = length
-#     #above evaluates to normal[2], so:
-#     angle = np.arccos(ellipse.normal[2]) # everything is in radians
-#     mat_to_local = tr.rotation_matrix(angle, direction)[:3, :3].T
-#     #find fracture in domain coordinates so can look for nearby cells
-#     b_box_min = ellipse.translation - np.max(ellipse.radius)
-#     b_box_max = ellipse.translation + np.max(ellipse.radius)
-#
-#     i_box_min = grid.cell_coord(b_box_min)
-#     i_box_max = grid.cell_coord(b_box_max) + 1
-#     axis_ranges = [range(max(0, a), min(b, n)) for a, b, n in zip(i_box_min, i_box_max, grid.cell_dimensions)]
-#
-#     grid_cumul_prod = np.array([1, grid.cell_dimensions[0], grid.cell_dimensions[0] * grid.cell_dimensions[1]])
-#     cells = []
-#     # X fastest running
-#     for ijk in itertools.product(*reversed(axis_ranges)):
-#         # make X the first coordinate
-#         ijk = np.flip(np.array(ijk))
-#         corners = grid.origin[None, :] + (ijk[None, :] + __rel_corner[:, :]) * grid.step[None, :]
-#         loc_corners = mat_to_local @ (corners - ellipse.translation).T
-#         if intersect_cell(loc_corners, ellipse):
-#             logging.log(logging.DEBUG, f"       cell {ijk}")
-#             cell_index = ijk @ grid_cumul_prod
-#             cells.append(cell_index)
-#     if len(cells) > 0:
-#         logging.log(logging.INFO, f"   #{i_ellipse} fr, {len(cells)} cell intersections")
-#     return Fracture(ellipse, cells)
-#
-# def map_dfn(grid, ellipses):
-#     '''Identify intersecting fractures for each cell of the ECPM domain.
-#      Extent of ECPM domain is determined by nx,ny,nz, and d (see below).
-#      ECPM domain can be smaller than the DFN domain.
-#      Return numpy array (fracture) that contains for each cell:
-#      number of intersecting fractures followed by each intersecting fracture id.
-#
-#      ellipses = list of dictionaries containing normal, translation, xrad,
-#                 and yrad for each fracture
-#      origin = [x,y,z] float coordinates of lower left front corner of DFN domain
-#      nx = int number of cells in x in ECPM domain
-#      ny = int number of cells in y in ECPM domain
-#      nz = int number of cells in z in ECPM domain
-#      step = [float, float, float] discretization length in ECPM domain
-#
-#      JB TODO: allow smaller ECPM domain
-#     '''
-#     logging.log(logging.INFO, f"Callculating Fracture - Cell intersections ...")
-#     return [fracture_for_ellipse(grid, ie, ellipse) for ie, ellipse in enumerate(ellipses)]
+        pvd_content = pv.get_reader(flow_out.hydro.spatial_file.path)
+        pvd_content.set_active_time_point(0)
+        dataset = pvd_content.read()[0]  # Take first block of the Multiblock dataset
+
+        velocities = dataset.cell_data['velocity_p0']
+        cross_section = dataset.cell_data['cross_section']
+
+        p_dataset = dataset.cell_data_to_point_data()
+        p_dataset.point_data['velocity_magnitude'] = np.linalg.norm(p_dataset.point_data['velocity_p0'], axis=1)
+        plane = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1))
+        cut_dataset = p_dataset.clip_surface(plane)
+
+        plotter = pv.Plotter()
+        plotter.add_mesh(p_dataset, color='white', opacity=0.3, label='Original Dataset')
+        plotter.add_mesh(cut_dataset, scalars='velocity_magnitude', cmap='viridis', label='Velocity Magnitude')
+
+        # Add legend and show the plot
+        plotter.add_scalar_bar(title='Velocity Magnitude')
+        plotter.add_legend()
+        plotter.show()
+
+        # num_cells = dataset.n_cells
+        # shifts = np.zeros((num_cells, 3))
+        # transform_matrices = np.zeros((num_cells, 3, 3))
+        # volumes = np.zeros(num_cells)
+
+        weights_sum = np.zeros((grid.n_elements,))
+        grid_velocities = np.zeros((grid.n_elements, 3))
+        levels = np.zeros(dataset.n_cells, dtype=np.int32)
+        # Loop through each cell
+        for i in range(dataset.n_cells):
+            cell = dataset.extract_cells(i)
+            points = cell.points
+
+            if len(points) < 3:
+                continue  # Skip cells with less than 3 vertices
+
+            # Shift: the first vertex of the cell
+            shift = points[0]
+            # shifts[i] = shift
+
+            transform_matrix = points[1:] - shift
+            if len(points) == 4:  # Tetrahedron
+                # For a tetrahedron, we use all three vectors formed from the first vertex
+                # transform_matrices[i] = transform_matrix[:3].T
+                # Volume calculation for a tetrahedron:
+                volume = np.abs(np.linalg.det(transform_matrix[:3])) / 6
+                ref_el = ref_el_3d
+            elif len(points) == 3:  # Triangle
+                # For a triangle, we use only two vectors
+                # transform_matrices[i, :2] = transform_matrix.T
+                # Area calculation for a triangle:
+                volume = 0.5 * np.linalg.norm(np.cross(transform_matrix[0], transform_matrix[1])) * cross_section[i]
+                ref_el = ref_el_2d
+            level = max(int(np.log2(volume / grid_cell_volume) / 3.0), 0)
+            levels[i] = level
+            ref_barycenters = refine_barycenters(ref_el[None, :, :], level)
+            barycenters = shift[None, :] + ref_barycenters @ transform_matrix
+            grid_indices = grid.project_points(barycenters)
+            weights_sum[grid_indices] += volume
+            #
+            # grid_velocities[grid_indices] += volume * velocities[i]
+
+            values.extend(len(grid_indices)*[volume])
+            rows.extend(grid_indices)
+            cols.extend(len(grid_indices) * [i])
+        #print(np.bincount(levels))
+        #grid_velocities = grid_velocities / weights_sum[:, None]
+
+        values[:] /= weights_sum[rows[:]]
+
+        sp.csr_matrix((vals, (rows, cols)), shape=(grid.n_elements, dataset.n_cells))
+        return grid_velocities
+
+    # @staticmethod
+    # def (dfn: FractureSet, fr_cross_section: np.ndarray, grid: Grid):
+    #     """
+    #     Create the grid - fracture set intersection object using particular voxelization algorithm.
+    #     :return:
+    #     """
+    #     return
+
+
+    def __call__(self, bulk_field, fracture_field):
+        assert bulk_field.shape[1:] == fracture_field.shape[1:]
+        field_shape = bulk_field.shape[1:]
+        assert bulk_field.shape[0] == self.domain.grid.n_elements
+        n_bulk = bulk_field.shape[0]
+        assert fracture_field.shape[0] == len(self.domain.dfn)
+        n_frac = fracture_field.shape[0]
+        bulk_f = bulk_field.reshape(n_bulk, -1)
+        frac_f = fracture_field.reshape(n_frac, -1)
+        result_f = self.bulk_scaling[:, None] * bulk_f + self.fracture_interpolation @ frac_f
+        return result_f.reshape(n_bulk, *field_shape)
+
+
+    def interpolate_grid(self, bulk_grid, bulk_field, fracture_field):
+        """
+        TODO: Interpolate bulk_filed given at bulk_grid to the domain.grid,
+        then return result of call: `self(interpolated_field, fracture_field)`
+
+        :param bulk_points: (n_points, 3)
+        :param bulk_field: (n_points, field_shape)
+        :param fracture_field:
+        :return:
+        """
+        pass
+
+    def interpolate_points(self, bulk_points, bulk_field, fracture_field):
+        """
+        TODO: Interpolate bulk_filed given at bulk_points to the domain.grid,
+        then return result of call: `self(interpolated_field, fracture_field)`
+
+        :param bulk_points: (n_points, 3)
+        :param bulk_field: (n_points, field_shape)
+        :param fracture_field:
+        :return:
+        """
+        pass
+
+def voxelize(dfn, bulk_grid):
+    """
+    Compute a sparse matrices for average homogenization:
+    homo_field = bulk_values_on_grid + A @ fracture_values
+    :param dfn:
+    :param bluk_grid:
+    :return:
+    """
 
 

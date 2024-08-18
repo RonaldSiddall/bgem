@@ -5,51 +5,9 @@ from bgem import stochastic
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
-
+import fixtures
 script_dir = Path(__file__).absolute().parent
 workdir = script_dir / "sandbox"
-
-
-fracture_stats = dict(
-    NS={'concentration': 17.8,
-     'p_32': 0.094,
-     'plunge': 1,
-     'power': 2.5,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 292},
-    NE={'concentration': 14.3,
-     'p_32': 0.163,
-     'plunge': 2,
-     'power': 2.7,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 326},
-    NW={'concentration': 12.9,
-     'p_32': 0.098,
-     'plunge': 6,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 60},
-    EW={'concentration': 14.0,
-     'p_32': 0.039,
-     'plunge': 2,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 15},
-    HZ={'concentration': 15.2,
-     'p_32': 0.141,
-     'power': 2.38,
-     'r_max': 564,
-     'r_min': 0.038,
-     #'trend': 5
-     #'plunge': 86,
-     'strike': 95,
-     'dip': 4
-     })
-
 
 """
 Test base shapes.
@@ -169,21 +127,6 @@ def check_fractures_transform_mat(fr_list):
 
 
 
-def get_dfn_sample(seed=123):
-    # generate fracture set
-    np.random.seed(seed)
-    box_size = 100
-    fracture_box = 3 * [box_size]
-    # volume = np.product()
-    pop = stochastic.Population.from_cfg(fracture_stats, fracture_box)
-    # pop.initialize()
-    pop = pop.set_range_from_size(sample_size=30)
-    mean_size = pop.mean_size()
-    print("total mean size: ", mean_size)
-    pos_gen = stochastic.UniformBoxPosition(fracture_box)
-    fractures = pop.sample(pos_distr=pos_gen, keep_nonempty=True)
-    return fractures
-
 def test_transform_mat():
     """
     Apply transfrom for
@@ -230,7 +173,7 @@ def test_transform_mat():
     ]
     check_fractures_transform_mat(fractures)
 
-    fractures = get_dfn_sample()
+    fractures = fixtures.get_dfn_sample()
     check_fractures_transform_mat(fractures)
 
     # fracture.fr_intersect(fractures)
@@ -243,7 +186,7 @@ def test_transform_mat():
     [stochastic.EllipseShape(), stochastic.RectangleShape(), stochastic.PolygonShape(6), stochastic.PolygonShape(8)]
 )
 def test_fracture_set_AABB(base_shape):
-    fractures = get_dfn_sample()
+    fractures = fixtures.get_dfn_sample()
     base_polygon = base_shape.vertices(256*256)
     tight=0
     for i, fr in enumerate(fractures):
