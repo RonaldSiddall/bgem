@@ -280,7 +280,18 @@ class Grid:
         """
         return [
             np.linspace(self.origin[ax], self.origin[ax] + self.dimensions[ax], self.shape[ax] + 1, dtype=np.float32)
-            for ax in [0, 1, 2]
+            for ax in range(self.dim)
+        ]
+
+    def axes_cell_coords(self):
+        """
+        Return list of self.dim arrays specifying positions of the cell barycenters
+        in each axis.
+        :return:
+        """
+        return [
+            np.arange(self.origin[ax] + self.step[ax]/2, self.origin[ax] + self.dimensions[ax], self.step[ax], dtype=np.float32)
+            for ax in range(self.dim)
         ]
 
     def cell_field_C_like(self, cell_array_F_like):

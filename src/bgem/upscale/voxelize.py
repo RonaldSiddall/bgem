@@ -7,10 +7,13 @@ import math
 import attrs
 from functools import cached_property
 from bgem.stochastic import Fracture
+
+from bgem.core import array_attr
 from bgem.upscale import Grid
 from bgem.stochastic import FractureSet, EllipseShape, PolygonShape
 
 import numpy as np
+from scipy import interpolate
 """
 Voxelization of fracture network.
 Task description:
@@ -118,12 +121,18 @@ class Intersection:
     The sparse
     TODO: refine design, try to use sparse matrix for interpolation of a connected bulk-fracture values vector
     """
-    domain: FracturedDomain   # The source object.
-    i_cell: np.ndarray        # sparse matrix rows, cell idx of intersection
-    i_fr: np.ndarray          # sparse matrix columns
-    isec: np.ndarray          # effective volume of the intersection
-    bulk_scale: np.ndarray    #
+    domain = attrs.field(type=FracturedDomain)      # The source object.
+    i_cell = array_attr(shape=(-1,), dtype=int)     # sparse matrix rows, cell idx of intersection
+    i_fr = array_attr(shape=(-1,), dtype=int)       # sparse matrix columns
+    isec = array_attr(shape=(-1,), dtype=float)     # effective volume of the intersection
+    #bulk_scale: np.ndarray    #
                               # used to scale bulk field
+
+    @classmethod
+    def const_isec(cls, domain, i_cell, i_fr, isec):
+        assert len(i_cell) == len(i_fr)
+        isec = np.broadcast_to([isec], (len(i_cell),))
+        return cls(domain, i_cell, i_fr, isec)
 
     @property
     def grid(self):
@@ -131,8 +140,8 @@ class Intersection:
 
     @cached_property
     def bulk_scale(self):
-        scale = np.ones(self.grid.n_elements)
-        scale[self.i_cell] -= self.isec
+        scale = np.ones(self.grid.n_elements, dtype=float)
+        scale[self.i_cell[:]] -= self.isec[:]   # !! have to broadcast isec, use convertor from fr_set
         return scale
 
     def cell_field(self):
@@ -150,11 +159,36 @@ class Intersection:
         fr_counts[unique_values] = counts
         return fr_counts
 
-    def interpolate(self, bulk_field, fr_field):
+    def interpolate(self, bulk_field, fr_field, source_grid=None):
+        """
+        Rasterize bulk and fracture fields to the target grid, i.e. self.grid.
+        If source_Grid is given the bulk filed is first resampled to the target grid
+        using linear interpolation and scipy.
+
+
+        :param bulk_field:
+        :param fr_field:
+        :param source_grid:
+        :return:
+        """
+        # if source_grid is not None:
+        #     assert np.allclose(np.array(source_grid.origin), np.array(self.grid.origin))
+        #     assert np.allclose(np.array(source_grid.dimensions), np.array(self.grid.dimensions))
+        #     grid_points = source_grid.axes_cell_coords()
+        #     target_points = self.grid.barycenters()
+        #     # !! Interpolation problem, we have piecewise values at input, but want to interpolate them linearly to th eoutput grid
+        #     # finner output grid points are out of the range of the input grid.
+        #     bulk_field = interpolate.interpn(grid_points,
+        #                                      bulk_field.reshape(*source_grid.shape, *bulk_field.shape[1:]),
+        #                                      target_points, method='linear')
+
         assert len(bulk_field) == self.domain.grid.n_elements
         assert len(fr_field) == len(self.domain.dfn)
-        combined = bulk_field * self.bulk_scale
-        combined[self.i_cell] += self.isec * fr_field[self.i_fr]
+        len_value_shape = len(bulk_field.shape) - 1
+        scalar_shape = (-1, *(len_value_shape*[1]))
+        combined = bulk_field * self.bulk_scale.reshape(scalar_shape)
+        combined[self.i_cell[:]] += self.isec[:].reshape(scalar_shape) * fr_field[self.i_fr[:]]
+        return combined
 
     def fr_tensor_2(self, fr_cond_scalar):
         """
@@ -166,7 +200,8 @@ class Intersection:
         return fr_cond_scalar[:, None, None] * (np.eye(3) - dfn.normal[:, :, None] * dfn.normal[:, None, :]) #/ normal_axis_step
 
     def perm_aniso_fr_values(fractures, fr_transmisivity: np.array, grid_step) -> np.ndarray:
-        '''Calculate anisotropic permeability tensor for each cell of ECPM
+        '''Calculate anisotrop
+            assert source_grid.origin == self.originic permeability tensor for each cell of ECPM
            intersected by one or more fractures. Discard off-diagonal components
            of the tensor. Assign background permeability to cells not intersected
            by fractures.
@@ -253,7 +288,7 @@ def intersection_decovalex(dfn:FractureSet, grid: Grid) -> 'Intersection':
         i_cell = []
         i_fr = []
     # fr, cell = zip([(i_fr, i_cell)  for i_fr, fr in enumerate(fractures) for i_cell in fr.cells])
-    return Intersection(domain, np.array(i_cell, dtype=int), np.array(i_fr, dtype=int), 1.0)
+    return Intersection.const_isec(domain, i_cell, i_fr, 1.0)
 
 
 __rel_corner = np.array([[0, 0, 0], [1, 0, 0],
@@ -301,7 +336,7 @@ def intersection_cell_corners(dfn:FractureSet, grid: Grid) -> 'Intersection':
                 i_cell.append(cell_index)
                 i_fr.append(i)
 
-    return Intersection(domain, np.array(i_cell, dtype=int), np.array(i_fr, dtype=int), 1.0)
+    return Intersection.const_isec(domain, i_cell, i_fr, 1.0)
 
 
 def intersection_interpolation(domain: FracturedDomain) -> 'Intersection':
@@ -333,6 +368,23 @@ def intersection_band_antialias(domain: FracturedDomain) -> 'Intersection':
     # return [fracture_for_ellipse(grid, ie, ellipse) for ie, ellipse in enumerate(ellipses)]
     pass
 
+def fr_conductivity(dfn:FractureSet, cross_section_factor = 1e-4, perm_factor = 1.0 ):
+    """
+
+    :param dfn:
+    :param cross_section_factor: scalar = cross_section / fracture mean radius
+    :return:
+    """
+    rho = 1000
+    g = 9.81
+    viscosity = 8.9e-4
+    perm_to_cond = rho * g / viscosity
+    cross_section = cross_section_factor * np.sqrt(np.prod(dfn.radius, axis=1))
+    perm = perm_factor * cross_section * cross_section / 12
+    conductivity = perm_to_cond * perm
+    cond_tn = conductivity[:, None, None] * (np.eye(3) - dfn.normal[:, :, None] * dfn.normal[:, None, :])
+
+    return cross_section, cond_tn
 # ============ DEPRECATED
 
 @attrs.define

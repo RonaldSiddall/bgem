@@ -29,6 +29,7 @@ import numpy as np
 import numpy.typing as npt
 
 from bgem import fn
+from bgem.core import array_attr
 from bgem.bspline import brep_writer as bw
 
 def embed_to_3d(points_2d):
@@ -691,19 +692,6 @@ class Fracture:
 
 
 
-def array_attr(shape, dtype=np.double, default=[]):
-    # Unfortunately broadcast_to does not support -1 in the target_shape
-    # assume shape in form (-1, ...).
-    assert shape[0] == -1
-
-    def converter(x):
-        rev_shape = reversed( (len(x), *shape[1:]) )
-        return np.broadcast_to(np.array(x).T, rev_shape).T
-
-    return attrs.field(
-        type=npt.NDArray[dtype],
-        converter=converter,
-        default=default)
 
 
 @attrs.define
@@ -716,7 +704,7 @@ class FractureSet:
     - centers have z=0
     - normals have z=0
     - shape_angle = 0
-    - shape is two point line segment
+    - shape is two point line segment= array_attr(shape=(-1, 2), dtype=np.double)
     - r[0,:] = r[1,:]
     """
 
@@ -1160,6 +1148,12 @@ class FractureSet:
             family=family_idx,
             population=self.population
         )
+
+def fr_conductivity_cubic(dfn:FractureSet, tensor:bool=False):
+    scalar
+
+
+
 
 @attrs.define
 class FractureValues:

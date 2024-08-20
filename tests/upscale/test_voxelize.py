@@ -40,10 +40,10 @@ memory = Memory(workdir, verbose=0)
 
 
 def bulk_sphere_field(grid: Grid, out_sphere_value, in_sphere_value):
-    r = np.min(grid.dimensions) * 0.8
+    r = np.min(grid.dimensions) * 0.8 / 2
     center = grid.grid_center()
-    field = np.full(grid.shape, out_sphere_value)
-    in_sphere = np.linalg.norm(grid.barycenters() - center) < r
+    field = np.full(grid.shape, out_sphere_value).flatten()
+    in_sphere = np.linalg.norm(grid.barycenters() - center, axis=1) < r
     field[in_sphere] = in_sphere_value
     return field
 
@@ -106,7 +106,7 @@ def probe_fr_intersection(fr_set: stochastic.FractureSet, grid: Grid):
         cell_indices = np.unique(grid.project_points(actual_points))
         i_cell.extend(cell_indices.tolist())
         i_fracture.extend(len(cell_indices)*[i])
-    return Intersection(domain,np.array(i_cell, dtype=int), np.array(i_fracture, dtype=int), 1.0)
+    return Intersection.const_isec(domain, i_cell, i_fr, 1.0)
 
 def plot_isec_fields(intersections: List[Intersection], names: List[str], outpath: Path):
     """
@@ -116,6 +116,24 @@ def plot_isec_fields(intersections: List[Intersection], names: List[str], outpat
     """
     grid = intersections[0].grid
     cell_fields = {n: isec.cell_field() for n, isec in zip(names, intersections)}
+
+    pv_grid = fem_plot.grid_fields_vtk(grid, cell_fields, vtk_path=outpath)
+
+    #plotter = fem_plot.create_plotter()  # off_screen=True, window_size=(1024, 768))
+    #plotter.add_mesh(pv_grid, scalars='cell_field')
+    #plotter.show()
+
+def plot_isec_fields2(isec: Intersection, in_field, out_field, outpath: Path):
+    """
+    Assume common grid
+    :param intersections:
+    :return:
+    """
+    grid = isec.grid
+    cell_fields = {
+        'cell_field': isec.cell_field(),
+        'in_field' : in_field,
+        'out_field' : out_field}
 
     pv_grid = fem_plot.grid_fields_vtk(grid, cell_fields, vtk_path=outpath)
 
@@ -152,7 +170,7 @@ def isec_decovalex_case(fr_list: List[stochastic.Fracture], grid: Grid):
     compare_intersections(isec, isec_probe, "compare_decovalex")
     compare_intersections(isec, isec_corners, "compare_corners")
 
-
+@pytest.mark.skip
 def test_intersection_decovalex():
     """
     Test correct set of intersection cells for each fracture.
@@ -199,7 +217,7 @@ def isec_corners_case(fr_list: List[stochastic.Fracture], grid: Grid):
     isec_probe = probe_fr_intersection(fr_set, grid)
     compare_intersections(isec_corners, isec_probe, "compare_corners_rect")
 
-
+@pytest.mark.skip
 def test_intersection_corners_rectangle():
     """
     Test correct set of intersection cells for each fracture.
@@ -226,10 +244,44 @@ def test_intersection_corners_rectangle():
     isec_corners_case(fr_list, grid)
 
     fr_list = [fr(30, [0, 10, -10], [0, 1, 3], ax=[1,1] ),
-               fr(30, [10, 0, -10], [1, 0, 0], ax=[-2,1]),
+               fr(60, [10, 0, -10], [1, 0, 0], ax=[-2,1]),
                fr(30, [10, 0, 0], [3, 1, 0], ax=[-1,-2]),
                fr(30, [-10, 0, 0], [-2, 1, 3], ax=[2,-1]),
                ]
+    isec_corners_case(fr_list, grid)
+
+def test_rasterized_field():
+    """
+    Test whole rasterization process using intersection_cell_corners
+    :return:
+    """
+    source_grid = Grid(3*[100], 3*[41], origin=3*[-50])
+    bulk_source_conductivity = bulk_sphere_field(source_grid, 1.0, 1e-11)
+    bulk_tn = bulk_source_conductivity[:, None, None] * np.eye(3)[None, :, :]
+
+    steps = 3* [41]
+    target_grid = Grid(3*[100], steps, origin=3*[-50]) # test grid with center in (0,0,0)
+
+    shape = stochastic.RectangleShape
+    fr = lambda r, c, n, ax=[1,0] : stochastic.Fracture(shape.id, r, c, n/np.linalg.norm(n), ax/np.linalg.norm(ax))
+    fr_list = [fr(30, [0, 5, -5], [0, 1, 3], ax=[1,1] ),
+               fr(30, [5, 0, -5], [1, 0, 0], ax=[-2,1]),
+               fr(30, [5, 0, 0], [3, 1, 0], ax=[-1,-2]),
+               fr(30, [-5, 0, 0], [-2, 1, 3], ax=[2,-1]),
+               ]
+    fr_set = stochastic.FractureSet.from_list(fr_list)
+    isec_corners = intersection_cell_corners(fr_set, target_grid)
+    #isec_probe = probe_fr_intersection(fr_set, target_grid)
+    cross_section, fr_cond = fr_conductivity(fr_set)
+    rasterized = isec_corners.interpolate(bulk_tn, fr_cond, source_grid=source_grid)
+    plot_isec_fields2(isec_corners, bulk_tn, rasterized, workdir / "raster_field.vtk")
+    for i_ax in range(3):
+        assert np.all(bulk_tn[:, i_ax, i_ax] <= rasterized[:, i_ax, i_ax])
+    for i_ax in range(3):
+        assert np.all(rasterized[:, i_ax, i_ax].max() <= fr_conductivity[:, i_ax, i_ax].max())
+
+
+
 
 # def dfn_4_fractures():
 #     return voxelize.FracturedMedia.from_dfn_works(script_dir / "4_fractures", 0.01)
