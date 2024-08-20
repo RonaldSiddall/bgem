@@ -77,7 +77,7 @@ class FracturedMedia:
         # fr cond r=10 ~ 0.8
         fr_r = np.array([fr.r for fr in dfn])
         fr_cross_section = unit_cross_section * fr_r
-        fr_cond = permeability_to_conductivity * permeability_factor * fr_r ** 2
+        fr_cond = permeability_to_conductivity * permeability_factor * fr_cross_section ** 2
         #fr_cond = np.full_like(fr_r, 10)
         return FracturedMedia(dfn, fr_cross_section, fr_cond, bulk_conductivity)
 
