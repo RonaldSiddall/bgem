@@ -1,6 +1,9 @@
 import os.path
 from typing import *
 import shutil
+import attrs
+import numpy.typing as npt
+
 from pathlib import Path
 import numpy as np
 import logging
@@ -122,6 +125,25 @@ def substitute_placeholders(file_in: str, file_out: str, params: Dict[str, Any])
 
 # TODO: running with stdout/ stderr capture, test for errors, log but only pass to the main in the case of
 # true error
+
+def array_attr(shape, dtype=np.double, default=[]):
+    """
+    Numpy array attribut definition for the attrs library.
+    - shape and dtype specification and auto conversion
+    - defalut empty array
+    """
+    # Unfortunately broadcast_to does not support -1 in the target_shape
+    # assume shape in form (-1, ...).
+    assert shape[0] == -1
+
+    def converter(x):
+        rev_shape = reversed( (len(x), *shape[1:]) )
+        return np.broadcast_to(np.array(x).T, rev_shape).T
+
+    return attrs.field(
+        type=npt.NDArray[dtype],
+        converter=converter,
+        default=default)
 
 
 def sample_from_population(n_samples:int, frequency:Union[np.array, int]):

@@ -18,10 +18,8 @@ TODO:
 - implement ellipse shape meshing for flow
 - implement rasterization (decovalex based) for rectangles and polygons
 """
-from typing import *
 
 import pytest
-import yaml
 import shutil
 from pathlib import Path
 
@@ -31,15 +29,13 @@ logger = logging.getLogger()
 
 
 import numpy as np
-import attrs
 import pyvista as pv
 
 from bgem import stochastic
 from bgem.gmsh import gmsh, options
 from mesh_class import Mesh
 from bgem.core import call_flow, dotdict, workdir as workdir_mng
-from bgem.upscale import fem_plot, fem, voigt_to_tn, tn_to_voigt, FracturedMedia, voxelize
-import decovalex_dfnmap as dmap
+from bgem.upscale import fem_plot, fem, voigt_to_tn, FracturedMedia, decovalex_dfnmap as dmap
 from scipy.interpolate import LinearNDInterpolator
 
 script_dir = Path(__file__).absolute().parent
@@ -125,6 +121,7 @@ def create_fractures_rectangles(gmsh_geom, fractures:FrozenSet, base_shape: gmsh
     fracture_fragments = gmsh_geom.fragment(*shapes)
     return fracture_fragments, region_map
 
+
 def ref_solution_mesh(work_dir, domain_dimensions, fractures, fr_step, bulk_step):
     factory = gmsh.GeometryOCC("homo_cube", verbose=True)
     gopt = options.Geometry()
@@ -132,10 +129,8 @@ def ref_solution_mesh(work_dir, domain_dimensions, fractures, fr_step, bulk_step
     gopt.ToleranceBoolean = 0.001
     box = factory.box(domain_dimensions)
 
-    print("fr step: {}, bulk step: {}".format(fr_step, bulk_step))
 
-    print("domain_dimensions ", domain_dimensions)
-
+    # TODO: use shape from fractures
     fractures, fr_region_map = create_fractures_rectangles(factory, fractures, factory.rectangle())
     fractures_group = factory.group(*fractures).intersect(box)
     box_fr, fractures_fr = factory.fragment(box, fractures_group)

@@ -173,6 +173,11 @@ class Grid:
     The cells are linearly numbered as np.empty(nx,ny,nz).flatten
     Cells numbered as C-style numpy array, last dimension running the fastest.
     """
+    @classmethod
+    def from_step(cls, dimensions, step, origin=0):
+        shape = np.ceil(dimensions / step).astype(int)
+        return cls(dimensions, shape, origin=origin)
+
     def __init__(self, dimensions, n_steps, origin=0):
         """
         dimensions: sequence of the physical dimensions of the grid box
@@ -207,6 +212,13 @@ class Grid:
         # Array with step size in each axis.
         return self.dimensions / self.shape
 
+    def grid_center(self):
+        """
+        Return cooridinates of the barycenter of the whole grid.
+        Result: np.array, shape = (3,)
+        """
+        return (2*self.origin + self.dimensions) / 2
+
     def barycenters(self):
         """
         Barycenters of elements.
@@ -218,10 +230,31 @@ class Grid:
         mesh_grid_array = np.stack(mesh_grid, axis=-1)
         return mesh_grid_array.reshape(-1, self.dim) + self.origin
 
+
     def __repr__(self):
         msg = f"Grid({self.shape}, domain: {self.dimensions}@{self.origin})"
         return msg
 
+    def points_to_cell_coords(self, points):
+        """
+        For a point array of shape (N, 3) return
+        array (N,3) of cell indices containing the points.
+        Indices set to -1 if point is out of the grid.
+        :param points:
+        :return:
+        """
+        centers_ijk_grid = (points - self.origin) // self.step[None, :]
+        centers_ijk_grid = centers_ijk_grid.astype(np.int32)
+        out_of_grid = np.logical_or( centers_ijk_grid < 0, centers_ijk_grid >=self.shape[None,:])
+        centers_ijk_grid[out_of_grid, :] = -1
+        return centers_ijk_grid
+
+    def coord_aabb(self, aabb):
+        i_aabb = (aabb - self.origin) // self.step[None, :]
+        i_aabb = i_aabb.astype(np.int32)
+        i_aabb = np.maximum(i_aabb, 0)
+        i_aabb = np.minimum(i_aabb, self.shape-1)
+        return i_aabb
 
     def project_points(self, points):
         """
@@ -236,6 +269,10 @@ class Grid:
                     centers_ijk_grid[:, 1] + self.shape[1] * centers_ijk_grid[:, 2])
         return grid_cell_idx
 
+    def cell_box(self, min_cell, max_cell):
+        """For given cell coords return array of cell ids in the box"""
+        pass
+
     def axes_linspace(self):
         """
         Return list of linspaces, on for each axis.
@@ -243,7 +280,18 @@ class Grid:
         """
         return [
             np.linspace(self.origin[ax], self.origin[ax] + self.dimensions[ax], self.shape[ax] + 1, dtype=np.float32)
-            for ax in [0, 1, 2]
+            for ax in range(self.dim)
+        ]
+
+    def axes_cell_coords(self):
+        """
+        Return list of self.dim arrays specifying positions of the cell barycenters
+        in each axis.
+        :return:
+        """
+        return [
+            np.arange(self.origin[ax] + self.step[ax]/2, self.origin[ax] + self.dimensions[ax], self.step[ax], dtype=np.float32)
+            for ax in range(self.dim)
         ]
 
     def cell_field_C_like(self, cell_array_F_like):
@@ -267,6 +315,7 @@ class Grid:
         grid_field = cell_array_C_like.reshape(*self.shape, *value_shape)
         transposed = grid_field.transpose(*reversed(range(self.dim)),-1)
         return transposed.reshape(-1, *value_shape)
+
 
 def fem_grid(dimensions, shape, fe, origin=None):
     """
@@ -384,7 +433,10 @@ class FEM:
         # 3D: [ny*nz, nz, 1]
         return np.cumprod([1, *self.dofs_shape[:0:-1]])[::-1]
 
-
+    def get_dof_grid(self):
+        return Grid(self.grid.dimensions,
+                    self.grid.step / (self.fe.n_dofs_1d - 1),
+                    self.origin)
 
     def nodes(self):
         """

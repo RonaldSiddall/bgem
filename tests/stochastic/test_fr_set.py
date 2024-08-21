@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
+from pathlib import Path
 from bgem import stochastic
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
-
+import fixtures
+script_dir = Path(__file__).absolute().parent
+workdir = script_dir / "sandbox"
 
 """
 Test base shapes.
@@ -77,73 +80,66 @@ def test_base_shapes(base_shape):
     area_estimate = N_in / N * aabb_area
     assert abs(area_estimate - 1.0) < 0.01
 
+
+def check_ortogonal_columns(mat):
+    product = mat.T @ mat
+    product_offdiag = product - np.diag(np.diag(product))
+    assert np.allclose(product_offdiag, np.zeros_like(product))
+
+
 def check_fractures_transform_mat(fr_list):
     dfn = stochastic.FractureSet.from_list(fr_list)
+    # BREP of the fractures
+    # dfn.make_fractures_brep(workdir / "transformed")
+
     dfn_base = dfn.transform_mat @ np.eye(3)
+
     for i, fr in enumerate(fr_list):
+        print(f"fr #{i}")
         base_vectors = dfn_base[i]
         assert base_vectors.shape == (3, 3)
         ref_base_1 = (fr.transform(np.eye(3)) - fr.center).T
+        # Origianl fracture transform with respect to DFN transfom matrix.
         assert np.allclose(dfn.center[i], fr.center)
-        assert np.allclose(base_vectors, ref_base_1)
+
+        # Test base is perpendicular
+        check_ortogonal_columns(ref_base_1)
+        check_ortogonal_columns(base_vectors)
+
+        assert np.allclose(base_vectors, ref_base_1), f"fr #{i} diff:\n {base_vectors}\n {ref_base_1}\n"
+
+        # Tak a single fracutre from DFN and compare its transfom to the DFN transform.
         fr_2 = dfn[i]
         ref_base_2 = (fr_2.transform(np.eye(3)) - fr.center).T
         assert np.allclose(dfn.center[i], fr_2.center)
         assert np.allclose(base_vectors, ref_base_2)
 
+    # Check rotation matrix
+    assert np.allclose( dfn.rotation_mat.transpose((0, 2, 1)) @ dfn.rotation_mat, np.eye(3))
+
+    # Check inverse transfrom
+    assert np.allclose(dfn.inv_transform_mat @ dfn.transform_mat, np.eye(3))
 
 
 
-fracture_stats = dict(
-    NS={'concentration': 17.8,
-     'p_32': 0.094,
-     'plunge': 1,
-     'power': 2.5,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 292},
-    NE={'concentration': 14.3,
-     'p_32': 0.163,
-     'plunge': 2,
-     'power': 2.7,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 326},
-    NW={'concentration': 12.9,
-     'p_32': 0.098,
-     'plunge': 6,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 60},
-    EW={'concentration': 14.0,
-     'p_32': 0.039,
-     'plunge': 2,
-     'power': 3.1,
-     'r_max': 564,
-     'r_min': 0.038,
-     'trend': 15},
-    HZ={'concentration': 15.2,
-     'p_32': 0.141,
-     'power': 2.38,
-     'r_max': 564,
-     'r_min': 0.038,
-     #'trend': 5
-     #'plunge': 86,
-     'strike': 95,
-     'dip': 4
-     })
+
+
+
+
 
 def test_transform_mat():
     """
     Apply transfrom for
     :return:
     """
+    # Tests without shape rotation.
+
     #shape_id = stochastic.EllipseShape.id
     shape_id = stochastic.RectangleShape.id
     fr = lambda s, c, n: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n) / np.linalg.norm(n))
     fractures = [
-        fr([2, 3], [1, 2, 3], [0, 0, 1]),
+        fr([1, 1], [1, 2, 3], [0, 0, 1]),
+        fr([2, 2], [1, 2, 3], [0, 0, 1]),
         fr([2, 3], [1, 2, 3], [1, 1, 0.2]),
         fr([2, 3], [1, 2, 3], [-1, -1, 0.2]),
         fr([2, 3], [1, 2, 3], [0, 0, -1]),
@@ -156,31 +152,50 @@ def test_transform_mat():
     check_fractures_transform_mat(fractures)
 
     fr = lambda s, c, n, ax: stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n)/np.linalg.norm(n), np.array(ax)/np.linalg.norm(ax))
+    s = [2, 2] #[2, 3]
     fractures = [
-        fr([2, 3], [1, 2, 3], [0, 0, 1], [1, 1]),
-        fr([2, 3], [1, 2, 3], [1, -0.5, -3], [1, 2]),
+        fr(s, [0,0,0], [0, 0, 1], [1, 1]),
+        fr(s, [0,0,0], [0, 0, 1], [-1, 1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [-1, -1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [1, -1]),
+        fr(s, [0, 0, 0], [0, 0, 1], [1, 2]),
+        fr(s, [0, 0, 0], [1, -0.5, -3], [1, 0]),
 
-        #fr([2, 3], [1, 2, 3], [0, 0, -1]),
-        #fr([2, 3], [0, 0, 0], [0, 1, 0]),
-        #fr([2, 3], [0, 0, 0], [0, -1, 0]),
-        #fr([2, 3], [0, 0, 0], [1, 0, 0]),
-        #fr([2, 3], [0, 0, 0], [-1, 0, 0]),
-        #fr([2, 3], [0, 0, 0], [1, 2, 3] / np.linalg.norm([1,2,3])),
-        #stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))
+        fr(s, [1, 2, 3], [0, 1, 1], [1, 2]),            # out of order
+        fr(s, [1, 2, 3], [1, -0.5, -3], [1, 2]),
+        fr(s, [1, 2, 3], [1, -0.5, -3], [-1, -1]),              # out of order
+
+        fr(s, [1, 2, 3], [0, 0, -1], [1,0]),
+        fr(s, [0, 0, 0], [0, 1, 0], [1,0]),
+        fr(s, [0, 0, 0], [0, -1, 0], [1,0]),
+        fr(s, [0, 0, 0], [1, 0, 0], [1,0]),
+        fr(s, [0, 0, 0], [-1, 0, 0], [1,0]),
     ]
     check_fractures_transform_mat(fractures)
 
-    # generate fracture set
-    box_size = 100
-    fracture_box = 3 * [box_size]
-    #volume = np.product()
-    pop = stochastic.Population.from_cfg(fracture_stats, fracture_box)
-    #pop.initialize()
-    pop = pop.set_range_from_size(sample_size=30)
-    mean_size = pop.mean_size()
-    print("total mean size: ", mean_size)
-    pos_gen = stochastic.UniformBoxPosition(fracture_box)
-    fractures = pop.sample(pos_distr=pos_gen, keep_nonempty=True)
+    fractures = fixtures.get_dfn_sample()
+    check_fractures_transform_mat(fractures)
+
     # fracture.fr_intersect(fractures)
 
     # stochastic.Fracture(shape_id, np.array(s), np.array(c), np.array(n))
+
+
+
+@pytest.mark.parametrize("base_shape",
+    [stochastic.EllipseShape(), stochastic.RectangleShape(), stochastic.PolygonShape(6), stochastic.PolygonShape(8)]
+)
+def test_fracture_set_AABB(base_shape):
+    fractures = fixtures.get_dfn_sample()
+    base_polygon = base_shape.vertices(256*256)
+    tight=0
+    for i, fr in enumerate(fractures):
+        boundary_points = fractures.transform_mat[i] @ base_polygon[:, :, None] + fr.center
+        min_corner, max_corner = fractures.AABB[i]
+        assert np.all(min_corner[None, :] <= boundary_points)
+        assert np.all(max_corner[None, :] >= boundary_points)
+        l_tight = np.min(boundary_points - min_corner[None, :])
+        u_tight = np.min(max_corner[None, :] - boundary_points)
+        rel_tight = max(l_tight, u_tight) / np.linalg.norm(fractures.radius[i])
+        tight = max(tight, rel_tight)
+        print("Tight:", tight, rel_tight)
