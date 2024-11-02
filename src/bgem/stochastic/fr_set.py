@@ -22,12 +22,10 @@ TODO:
 """
 import pathlib
 from typing import *
-
 import attrs
 import math
 import numpy as np
 import numpy.typing as npt
-
 from bgem import fn
 from bgem.core import array_attr
 from bgem.bspline import brep_writer as bw

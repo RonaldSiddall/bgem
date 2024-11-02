@@ -1,6 +1,4 @@
-from bgem.polygons import polygons as poly
 import numpy as np
-import scipy.linalg as la
 
 
 class IsecConflict:

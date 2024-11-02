@@ -10,9 +10,7 @@ TODO:
 from typing import *
 from pathlib import Path
 import numpy as np
-# import attr
 import attrs
-import math
 import json
 import yaml
 from bgem.stochastic import fr_set

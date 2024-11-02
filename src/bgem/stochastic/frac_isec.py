@@ -1,6 +1,5 @@
-from bgem.polygons import polygons as poly
+
 import numpy as np
-import scipy.linalg as la
 from bgem.stochastic import isec_conflict as IC
 
 
