@@ -9,7 +9,7 @@ class Axis(enum.IntEnum):
     v = 1
 
 
-class IsecCurvSurfPoint:
+class IsecCurveSurfPoint:
     """
     Point as the result of intersection with corresponding coordinates on both surfaces
 

@@ -125,7 +125,7 @@ class IsecCurveSurf:
                     iuv_b = np.array([iu2, iv2])
                     surf_point = SP.SurfacePoint(surf, iuv_b, uv_b)
 
-                    point = ICSP.IsecCurvSurfPoint(curv_point, surf_point, xyz)
+                    point = ICSP.IsecCurveSurfPoint(curv_point, surf_point, xyz)
                     point_list.append(point)
 
                     if curv_point.interface_flag != 0:
