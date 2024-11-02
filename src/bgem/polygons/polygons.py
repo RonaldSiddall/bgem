@@ -190,7 +190,7 @@ class PolygonDecomposition:
     #     self.decomp.last_polygon_change = (decomp.PolygonChange.shape, changed_polygons, None)
     #     return new_displ
 
-    def check_displacment(self, points, displacement):
+    def check_displacement(self, points, displacement):
         """
         LAYERS
         param: points: List of Points to move.
@@ -519,7 +519,7 @@ class PolygonDecomposition:
             a, b = b, a
 
         b_diff = b.xy - a.xy
-        b_can_move = self.check_displacment([b], b_diff)
+        b_can_move = self.check_displacement([b], b_diff)
 
         # TODO: introduce an exception, that we can not meet the tolerance criteria
         if not b_can_move:
