@@ -454,8 +454,8 @@ class FEM:
         ?? todo transpose, refactor
         :return:
         """
-        bc_natur_indeces = self.natur_map[np.arange(self.n_bc_dofs, dtype=np.int64)]
-        return self.dof_idx_to_coord(bc_natur_indeces)
+        bc_natur_indices = self.natur_map[np.arange(self.n_bc_dofs, dtype=np.int64)]
+        return self.dof_idx_to_coord(bc_natur_indices)
 
     @cached_property
     def bc_points(self):
