@@ -287,7 +287,7 @@ class IsecSurfSurf:
                 if own_isec_Z.connected == True:
                     continue
                 # TODO: turn this into an assert, asserts can be turned off during run
-                if self.check_duplicities(own_isec_Z.own_point, isec_X.own_point) < 0.00001:
+                if self.check_duplicates(own_isec_Z.own_point, isec_X.own_point) < 0.00001:
                     print("unresolved duplicity")
                     # own_isec_Z.connected = 1 ## !!
                     continue
@@ -322,7 +322,7 @@ class IsecSurfSurf:
                 if intersect > 0:
                     for own_isec_Z in own_list:
                         Z_on_own_surface = own_isec_Z.own_point
-                        if self.check_duplicities(Z_on_own_surface, Y_on_own_surface) < 0.00001:
+                        if self.check_duplicates(Z_on_own_surface, Y_on_own_surface) < 0.00001:
                             # TODO: what about Z point connected flag?, can it be used?
                             other_isec_Y.connected = True  # !!
                             # print('duplicita2') (may occur)
@@ -333,7 +333,7 @@ class IsecSurfSurf:
 
         return own_unconnected, other_unconnected
 
-    def check_duplicities(self, surfpoint1, surfpoint2):
+    def check_duplicates(self, surfpoint1, surfpoint2):
         """
         performs the test on distance of the points (iff appropriate patches are the same)
         :param surfpoint1: as surface_point
