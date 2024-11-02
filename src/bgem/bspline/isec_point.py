@@ -25,7 +25,7 @@ class IsecPoint:
         :param xyz: array of global coordinates as numpy array 3x1
         """
 
-        self.duplicite_with = None
+        self.duplicate_with = None
         # TODO: document attribute
         self.own_point: SurfacePoint = own_point
         # Position of the intersection on 'own' surface.
