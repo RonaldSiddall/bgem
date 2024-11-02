@@ -110,8 +110,8 @@ class IsecCurveSurf:
             if self._already_found(crossing, it) == 1:  # ?
                 print('continue')
                 continue
-            intersectioned_patches2 = tree.find_box(curv.boxes[it])
-            for ipatch2 in intersectioned_patches2:
+            intersected_patches2 = tree.find_box(curv.boxes[it])
+            for ipatch2 in intersected_patches2:
                 iu2, iv2 = surf.patch_id2pos(ipatch2)
                 uvt, conv, xyz = self.get_intersection(iu2, iv2, it, self.max_it, self.rel_tol, self.abs_tol)
                 if conv == 1:
