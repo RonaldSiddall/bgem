@@ -1,6 +1,5 @@
 from . import idmap
-from .segment import right_side, left_side, out_vtx, in_vtx
-import numpy as np
+from .segment import right_side, out_vtx
 
 
 class Polygon(idmap.IdObject):

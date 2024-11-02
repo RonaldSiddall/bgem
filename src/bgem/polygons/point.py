@@ -1,5 +1,5 @@
 from . import idmap
-from .segment import right_side, left_side, out_vtx, in_vtx
+from .segment import left_side, in_vtx
 import numpy as np
 
 
