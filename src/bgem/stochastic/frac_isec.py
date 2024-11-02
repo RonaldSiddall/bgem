@@ -15,7 +15,7 @@ class FracIsec:
         """
 
     @staticmethod
-    def colision_indicator(fracture_A, fracture_B, tol):
+    def collision_indicator(fracture_A, fracture_B, tol):
         """
         Indicator of collision based on bounding boxes aligned with the fracture and intersection line.
         False implies no collision guaranteed.

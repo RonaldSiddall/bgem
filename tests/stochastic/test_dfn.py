@@ -561,7 +561,7 @@ def compute_intersections(fractures: fr_set.Fracture):
         for j in p[i + 1:n_fr]:  # may be reduced to relevant adepts
             frac_isec = FIC.FracIsec(fractures[i],fractures[j])
             points_A, points_B = frac_isec._get_points(tolerance)
-            possible_colision = FIC.FracIsec.colision_indicator(fractures[i], fractures[j], tolerance)
+            possible_colision = FIC.FracIsec.collision_indicator(fractures[i], fractures[j], tolerance)
 
             if possible_colision or frac_isec.have_colision:
                 print(f"collision: {frac_isec.fracture_A.id}, {frac_isec.fracture_B.id}")
