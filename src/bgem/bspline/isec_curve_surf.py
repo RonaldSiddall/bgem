@@ -9,9 +9,9 @@ class IsecCurveSurf:
     Class which provides intersection of the given surface and curve
     """
 
-    def __init__(self, surf, curv):
+    def __init__(self, surf, curve):
         self.surf = surf
-        self.curv = curv
+        self.curve = curve
 
     def _compute_jacobian_and_coordinates(self, uvt, iuvt):
         """
@@ -23,17 +23,17 @@ class IsecCurveSurf:
         """
 
         surf = self.surf
-        curv = self.curv
+        curve = self.curve
         iu, iv, it = iuvt
         surf_poles = surf.poles[iu:iu + 3, iv:iv + 3, :]
-        t_poles = curv.poles[it:it + 3, :]
+        t_poles = curve.poles[it:it + 3, :]
 
         uf = surf.u_basis.eval_vector(iu, uvt[0])
         vf = surf.v_basis.eval_vector(iv, uvt[1])
         ufd = surf.u_basis.eval_diff_vector(iu, uvt[0])
         vfd = surf.v_basis.eval_diff_vector(iv, uvt[1])
-        tf = curv.basis.eval_vector(it, uvt[2])
-        tfd = curv.basis.eval_diff_vector(it, uvt[2])
+        tf = curve.basis.eval_vector(it, uvt[2])
+        tfd = curve.basis.eval_diff_vector(it, uvt[2])
 
         dxyz2t = t_poles.T @ tfd
         # surf_poles have shape (Nu, Nv, 3)
@@ -66,13 +66,13 @@ class IsecCurveSurf:
         """
 
         min_bounds = np.array(
-            [self.surf.u_basis.knots[iu + 2], self.surf.v_basis.knots[iv + 2], self.curv.basis.knots[it + 2]])
+            [self.surf.u_basis.knots[iu + 2], self.surf.v_basis.knots[iv + 2], self.curve.basis.knots[it + 2]])
         max_bounds = np.array(
-            [self.surf.u_basis.knots[iu + 3], self.surf.v_basis.knots[iv + 3], self.curv.basis.knots[it + 3]])
+            [self.surf.u_basis.knots[iu + 3], self.surf.v_basis.knots[iv + 3], self.curve.basis.knots[it + 3]])
         uvt = (min_bounds + max_bounds) / 2
 
         iuvt = (iu, iv, it)
-        # uvt_basis = [self.surf.u_basis, self.surf.v_basis, self.curv.basis]
+        # uvt_basis = [self.surf.u_basis, self.surf.v_basis, self.curve.basis]
         # bounds = [basis.knot_interval_bounds(iuvt[axis]) for axis, basis in enumerate(uvt_basis)]
         # bounds = np.array(bounds).T  # shape (2, 3)
         # uvt = np.average(bounds, axis=0)
