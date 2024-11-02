@@ -124,7 +124,6 @@ class SurfacePoint:
         :param surf_point: as surface_point
         :return: as numpy array of integers
         """
-        patch_id = set()
         patch_id = {self.surf.patch_pos2id(iu, iv) for iu, iv in self.iuv}
 
         return patch_id
