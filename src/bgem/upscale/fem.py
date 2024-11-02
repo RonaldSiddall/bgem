@@ -327,7 +327,7 @@ def fem_grid(dimensions, shape, fe, origin=None):
     :return:
 
     """
-    dimensions = dimensions = dimensions * np.ones(fe.dim)
+    dimensions = dimensions * np.ones(fe.dim)
     if origin is None:
         origin = 0
     grid = Grid(dimensions, shape, origin)
