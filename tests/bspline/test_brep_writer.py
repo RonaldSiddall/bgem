@@ -1,10 +1,8 @@
 import pytest
-import numpy as np
 import os
 import filecmp
 from bgem.bspline import brep_writer as bw
 from bgem import Transform
-from fixtures import sandbox_fname
 
 this_source_dir = os.path.dirname(os.path.realpath(__file__))
 

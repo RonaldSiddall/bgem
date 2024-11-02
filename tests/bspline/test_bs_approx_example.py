@@ -1,10 +1,5 @@
 import numpy as np
 from bgem.bspline import bspline as bs, bspline_plot as bs_plot, bspline_approx as bs_approx
-# import math
-# #import matplotlib.pyplot as plt
-# #from mpl_toolkits.mplot3d import Axes3D
-# import time
-# import logging
 import os
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
