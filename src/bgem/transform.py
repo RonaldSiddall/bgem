@@ -1,8 +1,6 @@
 """
 Linear transformation in 3d space.
 """
-import copy
-from typing import *
 import numpy as np
 from bgem import ParamError
 
