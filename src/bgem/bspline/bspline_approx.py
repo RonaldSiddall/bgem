@@ -20,15 +20,11 @@ TODO:
 """
 
 import logging
-import time
-import math
-# import attr
 import numpy as np
 import numpy.linalg as la
 import scipy.sparse
 import scipy.sparse.linalg
 import scipy.interpolate
-
 from bgem.bspline import bspline as bs
 from bgem.bspline.surface_point_set import SurfacePointSet
 from bgem import tools
