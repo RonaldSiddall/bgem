@@ -40,7 +40,7 @@ class Algorithm2d(enum.IntEnum):
     FrontalDelaunay = 6
     BAMG = 7  # Anisotropic
     FrontalDelaunayQuads = 8
-    ParalelogramsPacking = 9
+    ParallelogramsPacking = 9
 
 
 class Algorithm3d(enum.IntEnum):
@@ -52,10 +52,10 @@ class Algorithm3d(enum.IntEnum):
 
 
 class QualityType(enum.IntEnum):
-    SignedInversConditionNumber = 0  # SICN~signed inverse condition number (TODO: explain)
+    SignedInverseConditionNumber = 0  # SICN~signed inverse condition number (TODO: explain)
     SignedInverseGradientError = 1  # SIGE~signed inverse gradient error (TODO: explain)
     Gamma = 2  # (default) gamma ~ vol / sum_face / max_edge; ( "element height" / diameter)
-    Distorsion = 3  # Disto~minJ / maxJ (TODO: explain)
+    Distortion = 3  # Disto~minJ / maxJ (TODO: explain)
 
 
 class OptionsBase:
