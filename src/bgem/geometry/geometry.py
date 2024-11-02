@@ -724,7 +724,7 @@ class StratumLayer(GeoLayer):
     def init(self, lg):
         # self.i_top = self.top.make_interface(lg)
         # self.i_bot = self.bottom.make_interface(lg)
-        assert self.test_topology_compatiblity()
+        assert self.test_topology_compatibility()
 
         # self.topology = self.top.topology
 
@@ -733,7 +733,7 @@ class StratumLayer(GeoLayer):
         #    for i_reg in reg_list:
         #        self.regions[i_reg].init(topo_dim=tdim, extrude = True)
 
-    def test_topology_compatiblity(self):
+    def test_topology_compatibility(self):
         """Returns True if top and bottom decomposition have compatible topology."""
         if set(self.d_top.points.keys()) != set(self.d_bot.points.keys()):
             return False
