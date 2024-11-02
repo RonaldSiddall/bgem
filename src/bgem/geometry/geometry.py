@@ -23,19 +23,15 @@ Heterogeneous mesh step:
 -
 - add include
 """
-
 import os
-import sys
 import subprocess
 from enum import IntEnum
-
 import bgem.polygons.polygons as polygons
 import bgem.polygons.merge as merge
 from bgem.gmsh import gmsh_io as gmsh_io
 import numpy as np
 import numpy.linalg as la
 import math
-
 import bgem.bspline.bspline as bs
 import bgem.bspline.bspline_approx as bs_approx
 import bgem.bspline.brep_writer as bw
@@ -52,14 +48,6 @@ import bgem.bspline.brep_writer as bw
 
 # import bspline_plot as bs_plot
 
-
-###
-# netgen_install_prefix="/home/jb/local/"
-# netgen_path = "opt/netgen/lib/python3/dist-packages"
-# sys.path.append( netgen_install_prefix + netgen_path )
-
-# import netgen.csg as ngcsg
-# import netgen.meshing as ngmesh
 
 class ExcGMSHCall(Exception):
     def __init__(self, stdout, stderr):
