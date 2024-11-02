@@ -1,8 +1,7 @@
 from typing import *
 import logging
 import os
-import attrs
-from . import dotdict, memoize, File, report, substitute_placeholders, workdir
+from . import dotdict, File, substitute_placeholders, workdir
 import subprocess
 from pathlib import Path
 import yaml
