@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.linalg as la
 
-from . import curve_point as CP, surface_point as SP, isec_curv_surf_point as ICSP
+from . import curve_point as CP, surface_point as SP, isec_curve_surf_point as ICSP
 
 
 class IsecCurveSurf:
