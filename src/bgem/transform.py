@@ -6,6 +6,7 @@ from typing import *
 import numpy as np
 from bgem import ParamError
 
+
 def check_matrix(mat, shape, values, idx=()):
     '''
     Check shape and type of scalar, vector or matrix.
@@ -22,21 +23,22 @@ def check_matrix(mat, shape, values, idx=()):
 
         if len(shape) == 0:
             if not isinstance(mat, values):
-                raise ParamError("Element at index {} of type {}, expected instance of {}.".format(idx, type(mat), values))
+                raise ParamError(
+                    "Element at index {} of type {}, expected instance of {}.".format(idx, type(mat), values))
         else:
 
             if shape[0] is None:
                 shape[0] = len(mat)
-            l=None
+            l = None
             if not hasattr(mat, '__len__'):
-                l=0
+                l = 0
             elif len(mat) != shape[0]:
-                l=len(mat)
+                l = len(mat)
             if not l is None:
                 raise ParamError("Wrong len {} of element {}, should be  {}.".format(l, idx, shape[0]))
             for i, item in enumerate(mat):
                 sub_shape = shape[1:]
-                check_matrix(item, sub_shape, values, idx = (i, *idx))
+                check_matrix(item, sub_shape, values, idx=(i, *idx))
                 shape[1:] = sub_shape
         return shape
     except ParamError:
@@ -45,21 +47,23 @@ def check_matrix(mat, shape, values, idx=()):
         raise ParamError(e)
 
 
-Matrix = np.array   #shape 3x4
+Matrix = np.array  # shape 3x4
 Power = int
+
+
 class Transform:
     """
-    Defines an affine transformation in 3D space. (Corresponds to the Location inthe BREP file).
+    Defines an affine transformation in 3D space. (Corresponds to the Location in the BREP file).
     """
 
     @staticmethod
     def _identity_matrix():
-        return np.array([[1,0,0,0], [0,1,0,0], [0,0,1,0]], dtype=float)
+        return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]], dtype=float)
 
     @staticmethod
     def _flat(composition):
         """
-        Combine transfromations from self._composition.
+        Combine transformations from self._composition.
         """
         result = np.eye(4)
         for t, p in composition:
@@ -78,7 +82,7 @@ class Transform:
 
     def __init__(self, matrix: Matrix = None):
         """
-        Constructor for elementary afine transformation.
+        Constructor for elementary affine transformation.
         :param matrix: Transformation matrix 3x4. First three columns forms the linear transformation matrix.
         Last column is the translation vector.
         """
@@ -89,9 +93,9 @@ class Transform:
             check_matrix(matrix, [3, 4], (int, float))
             self._matrix = np.array(matrix, dtype=float)
 
-    def is_composed(self) -> bool :
+    def is_composed(self) -> bool:
         """
-        Composed of singel matrix with power one.
+        Composed of a single matrix with power one.
         """
         return len(self._composition) > 0
 
@@ -105,21 +109,19 @@ class Transform:
         else:
             return self._matrix
 
-
-    def __call__(self, points:np.array) -> np.array:
+    def __call__(self, points: np.array) -> np.array:
         """
         :param points: shape (3, N)
         return: transformed array, shape (3, N)
         """
         return self.matrix[:, :3] @ points + (self.matrix[:, 3])[:, None]
 
-
-    def __pow__(self, power:int):
+    def __pow__(self, power: int):
         """
         Return power of the transform.
         """
         if self.is_composed():
-            composition = [(t, p * power) for t, p  in self._composition]
+            composition = [(t, p * power) for t, p in self._composition]
         else:
             composition = [(self, power)]
         result = Transform()
@@ -150,7 +152,6 @@ class Transform:
         result._composition = b._composition + a._composition
         result._matrix = result._flat(result._composition)
         return result
-
 
     def translate(self, vector):
         """
@@ -184,7 +185,7 @@ class Transform:
                 [[0, -axis[2], axis[1]],
                  [axis[2], 0, -axis[0]],
                  [-axis[1], axis[0], 0]])
-            M = np.eye(3) +  np.sin(angle) * W + 2 * np.sin(angle/2) ** 2 * W @ W
+            M = np.eye(3) + np.sin(angle) * W + 2 * np.sin(angle / 2) ** 2 * W @ W
             matrix[:, 3] -= center
             matrix = M @ matrix
             matrix[:, 3] += center
@@ -201,4 +202,3 @@ class Transform:
         matrix = np.diag(scale_vector) @ matrix
         matrix[:, 3] += center
         return Transform(matrix) @ self
-
