@@ -112,9 +112,9 @@ class IsecSurfSurf:
                 # interval_intersections = 0
                 for it in range(curve.basis.n_intervals):
                     curv_surf_isec = ICS.IsecCurveSurf(other_surf, curve)
-                    intersectioned_patches2 = tree2.find_box(curve.boxes[it])
+                    intersected_patches2 = tree2.find_box(curve.boxes[it])
                     lpoint_list = []
-                    for ipatch2 in intersectioned_patches2:
+                    for ipatch2 in intersected_patches2:
                         iu2, iv2 = other_surf.patch_id2pos(ipatch2)
                         # TODO: rel_tol is not used, meaning should be clarified ...
                         # rel_tol is not used in the get_intersection method.
