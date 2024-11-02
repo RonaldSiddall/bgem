@@ -6,13 +6,13 @@ class CurvePoint:
     Class to represent a point on the surface including the patch coordinates.
     """
 
-    def __init__(self, curv, it, t):
+    def __init__(self, curve, it, t):
         """
         :param surf: surface
         :param iuv: numpy array 2x1, corresponds to the position of the patch on the surface (defined by knot vectors )
         :param uv: numpy array 2x1 of local coordinates
         """
-        self.curv = curv
+        self.curve = curve
         self.it = []
         self.it.append(it)
         self.t = t
