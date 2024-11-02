@@ -1,8 +1,6 @@
 import pyvista as pv
-import numpy as np
 import pathlib
 from bgem.upscale import Grid
-import matplotlib.pyplot as plt
 import numpy as np
 
 """

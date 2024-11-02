@@ -2,18 +2,13 @@ from typing import *
 from pathlib import Path
 import csv
 import itertools
-import math
-
 import attrs
 from functools import cached_property
 from bgem.stochastic import Fracture
-
 from bgem.core import array_attr
 from bgem.upscale import Grid
-from bgem.stochastic import FractureSet, EllipseShape, PolygonShape
-
+from bgem.stochastic import FractureSet, EllipseShape
 import numpy as np
-from scipy import interpolate
 
 """
 Voxelization of fracture network.

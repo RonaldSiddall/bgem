@@ -3,9 +3,8 @@ Exact FEM based homogenization using regular d-dimensional grid.
 """
 from functools import cached_property
 import numpy as np
-from .fields import tn_to_voigt, voigt_to_tn, voigt_coords
+from .fields import voigt_to_tn, voigt_coords
 from .homogenization import equivalent_posdef_tensor
-# from bgem.stochastic import dfn
 import scipy.sparse as sp
 import pyamg
 
