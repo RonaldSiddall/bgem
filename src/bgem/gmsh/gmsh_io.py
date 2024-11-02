@@ -2,9 +2,7 @@
 from __future__ import print_function
 import threading
 import os.path
-import struct
 import numpy as np
-import enum
 import gmsh
 
 

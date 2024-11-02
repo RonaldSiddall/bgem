@@ -1,5 +1,3 @@
-import warnings
-
 
 def make_warning(cls):
     """
