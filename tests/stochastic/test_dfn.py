@@ -499,7 +499,7 @@ def test_brep_dfn():
 #     colors = [cmap(i) for i in np.linspace(0, 1, len(powers))]
 #
 #     fig = plt.figure(figsize = (16, 9))
-#     axes = fig.subplots(1, 2, sharey=True)
+#     axes = fig.subplots(1, 2, share=True)
 #     for i, power in enumerate(powers):
 #         diam_range = (0.1, 10)
 #         distr = frac.PowerLawSize(power, diam_range, 1000)
