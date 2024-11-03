@@ -396,7 +396,7 @@ class Process:
         :return:
         """
         self.symmetry_test()
-        self.eigen_val_corellation()
+        self.eigen_val_correlation()
         self.mass_cond()
         self.anisotropy_test()
 
@@ -414,7 +414,7 @@ class Process:
         ax_tn.hist(tn_norm, bins=20, density=True)
         fig.savefig(os.path.join(self.dir, "symmetry_error.pdf"))
 
-    def eigen_val_corellation(self):
+    def eigen_val_correlation(self):
         """
         We assume there is a correlation between eigen values.
         :return:
