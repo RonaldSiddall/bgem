@@ -83,7 +83,7 @@ def test_base_shapes(base_shape):
     assert abs(area_estimate - 1.0) < 0.01
 
 
-def check_ortogonal_columns(mat):
+def check_orthogonal_columns(mat):
     product = mat.T @ mat
     product_offdiag = product - np.diag(np.diag(product))
     assert np.allclose(product_offdiag, np.zeros_like(product))
@@ -105,8 +105,8 @@ def check_fractures_transform_mat(fr_list):
         assert np.allclose(dfn.center[i], fr.center)
 
         # Test base is perpendicular
-        check_ortogonal_columns(ref_base_1)
-        check_ortogonal_columns(base_vectors)
+        check_orthogonal_columns(ref_base_1)
+        check_orthogonal_columns(base_vectors)
 
         assert np.allclose(base_vectors, ref_base_1), f"fr #{i} diff:\n {base_vectors}\n {ref_base_1}\n"
 
