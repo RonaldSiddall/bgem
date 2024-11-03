@@ -10,10 +10,8 @@ Conclusion:
 """
 from PIL import Image
 from PIL import ImageDraw
-
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import collections as mc
 from bgem.stochastic import dfn
 
 

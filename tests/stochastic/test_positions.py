@@ -1,14 +1,10 @@
 from bgem.stochastic import frac_isec as FIC
-
 import numpy.linalg as lan
 import numpy as np
 import math
-
-# from bgem
 from bgem.stochastic import Fracture, RectangleShape
 from bgem.bspline import brep_writer as bw
 from bgem import Transform
-
 from fixtures import sandbox_fname
 
 

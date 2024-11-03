@@ -1,8 +1,6 @@
 import numpy.linalg as lan
 import numpy as np
 import math
-
-# from bgem
 from bgem.stochastic import fr_set
 from bgem.bspline import brep_writer as bw
 from bgem import Transform

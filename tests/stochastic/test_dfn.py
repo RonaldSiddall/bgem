@@ -1,14 +1,10 @@
 """
 
 """
-import pytest
 import os
 import attr
 import numpy as np
 import collections
-# import matplotlib.pyplot as plt
-
-# from bgem
 from bgem.gmsh import gmsh
 from bgem.gmsh import options as gmsh_options
 from bgem.gmsh import field as gmsh_field
@@ -19,8 +15,6 @@ from bgem.stochastic import dfn
 from bgem.bspline import brep_writer as bw
 from bgem import Transform
 from fixtures import sandbox_fname
-
-# script_dir = os.path.dirname(os.path.realpath(__file__))
 
 geometry_dict = {
     'box_dimensions': [100, 100, 100],
