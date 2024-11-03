@@ -328,7 +328,7 @@ def test_solve_sparse_3d():
 
 
 @pytest.mark.skip()
-def test_upsacale_2d():
+def test_upscale_2d():
     K_const = np.diag([10, 100])
     K_const = fields.tn_to_voigt(K_const[None, :, :])
     K_field = K_const * np.ones((8, 8))[:, :, None]
