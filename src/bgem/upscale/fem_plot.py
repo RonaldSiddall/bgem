@@ -110,7 +110,7 @@ def scatter_3d(mesh, values, n=5):
     glyphs = mesh.glyph(geom=geom, scale='scalars', factor=0.3)
 
     # Add the glyphs to the plotter
-    p.add_mesh(glyphs, cmap='coolwarm', show_scalar_bar=True)
+    pv.Plotter().add_mesh(glyphs, cmap='coolwarm', show_scalar_bar=True)
 
 
 def plot_fn_3d(fn, n=5):
