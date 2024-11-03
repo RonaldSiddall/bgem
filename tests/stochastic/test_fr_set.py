@@ -2,7 +2,6 @@ import pytest
 from pathlib import Path
 from bgem import stochastic
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import numpy as np
 import fixtures
 
