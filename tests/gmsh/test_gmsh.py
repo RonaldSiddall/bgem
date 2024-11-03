@@ -385,8 +385,8 @@ def test_2D_tunnel_cut():
     gen.write_mesh(mesh_name + ".msh2", gmsh.MeshFormat.msh2)
 
     # estimate number of the smallest elements around the tunnel
-    tunnel_circuference = np.pi * np.sqrt(2 * (tunnel_dims[0] ** 2 + tunnel_dims[1] ** 2))
-    n_expected = np.round(tunnel_circuference / tunnel_mesh_step)
+    tunnel_circumference = np.pi * np.sqrt(2 * (tunnel_dims[0] ** 2 + tunnel_dims[1] ** 2))
+    n_expected = np.round(tunnel_circumference / tunnel_mesh_step)
 
     # get number of the smallest elements
     n_match = check_min_mesh_step(dim=2, step_size=tunnel_mesh_step, tolerance=0.05)
