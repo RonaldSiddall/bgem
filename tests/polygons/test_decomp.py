@@ -1,13 +1,9 @@
 # import matplotlib.pyplot as plt
 # from matplotlib import collections  as mc
 # from matplotlib import patches as mp
-
 import numpy as np
-import pytest
 from bgem.polygons.decomp import *
 from bgem.polygons.polygons import PolygonDecomposition
-# from polygons.plot_polygons import plot_polygon_decomposition
-import os
 import sys
 
 print(sys.path)

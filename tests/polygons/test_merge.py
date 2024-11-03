@@ -1,8 +1,6 @@
 from bgem.polygons.polygons import PolygonDecomposition
 import bgem.polygons.merge as merge
 import numpy as np
-import pytest
-
 
 # def test_deep_copy(self):
 #     print("===== test deep_copy")

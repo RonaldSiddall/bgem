@@ -2,13 +2,8 @@
 # import numpy as np
 # from matplotlib import collections  as mc
 # from matplotlib import patches as mp
-import pytest
-
 from bgem.polygons.polygons import *
 from bgem.polygons.decomp import PolygonChange
-from bgem.polygons.plot_polygons import plot_polygon_decomposition
-
-
 #
 # def plot_polygon(self, polygon):
 #     if polygon is None or polygon.displayed or polygon.outer_wire.is_root():

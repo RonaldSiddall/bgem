@@ -1,13 +1,9 @@
 import pytest
-import numpy as np
 import numpy.linalg as la
-
 import sys
 import os
-
 print("cwg : ", os.getcwd())
 print("test path: ", sys.path)
-
 from bgem.polygons.aabb_lookup import *
 
 
