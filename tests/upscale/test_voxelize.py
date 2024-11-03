@@ -7,32 +7,18 @@ Test of homogenization algorithms from voxelize.py
   In order to develop more precises homogenization techniques, we must use two-scale test problems.
 """
 import pytest
-import fixtures
-
 from typing import *
-import yaml
-import shutil
 from pathlib import Path
-from scipy import integrate
-
 import logging
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
-
 import numpy as np
-import attrs
 import pyvista as pv
-
 from bgem import stochastic
 from bgem import fn
-from bgem.gmsh import gmsh, options
-from mesh_class import Mesh
-from bgem.core import call_flow, dotdict, workdir as workdir_mng
 from bgem.upscale import *
 from bgem.upscale import fem_plot
 from bgem.upscale.voxelize import base_shape_interior_grid
-
 script_dir = Path(__file__).absolute().parent
 workdir = script_dir / "sandbox"
 from joblib import Memory

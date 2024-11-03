@@ -1,9 +1,7 @@
 from typing import Dict, Tuple, List
-
 import attrs
 import bih
 import numpy as np
-# from numba import njit
 import bisect
 
 from bgem.gmsh.gmsh_io import GmshIO

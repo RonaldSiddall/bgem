@@ -1,9 +1,6 @@
 import numpy as np
 import pytest
-
-# from bgem.stochastic import dfn
 from bgem.upscale import fem, fields, fem_plot
-
 
 # --------------------------------------------------
 # FE class tests

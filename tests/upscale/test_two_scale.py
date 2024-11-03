@@ -30,7 +30,6 @@ logger = logging.getLogger()
 
 import numpy as np
 import pyvista as pv
-
 from bgem import stochastic
 from bgem.gmsh import gmsh, options
 from mesh_class import Mesh
