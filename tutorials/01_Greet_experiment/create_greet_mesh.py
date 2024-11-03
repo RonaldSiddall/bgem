@@ -1,4 +1,3 @@
-import sys
 import os
 import yaml
 import numpy as np
@@ -19,10 +18,9 @@ Reports lot of unknown OpenCASCADE entities:
 '''
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-# sys.path.append(os.path.join(script_dir, '../src/bgem/gmsh'))
+
 
 from bgem.gmsh import gmsh
-from bgem.gmsh import options
 
 
 def create_box(gmsh_occ, box_geom):
